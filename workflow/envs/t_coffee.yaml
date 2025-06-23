@@ -1,5 +1,0 @@
-channels:
- - conda-forge
- - bioconda
-dependencies:
- - t-coffee=13.46.0.919e8c6b

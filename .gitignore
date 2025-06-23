@@ -1,22 +1,8 @@
-# Ignore everything by default
-*
-
-# Allow .gitignore
-!.gitignore
-
-# Ignore analysis data and results
-analysis/
-data/
-results/
-
-# Allow specific files
-!README.md
-!config.yaml
-
-# Allow workflow directory and its contents
-!workflow/
-!workflow/*
-!workflow/scripts/
-!workflow/scripts/*
-!workflow/envs/
-!workflow/envs/*
+*.bak
+*.swp
+*~
+\#~*
+*.spec
+__pycache__/
+build/
+*.egg-info/
