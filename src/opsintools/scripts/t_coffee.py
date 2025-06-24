@@ -36,7 +36,7 @@ def run_t_coffee(work_dir, fasta_file, template_file, output_alignment, log_file
 
 def t_coffee(query_id, query_pdb, query_fasta, chosen_pdbs, rep_fasta, output_alignment, log_file, methods, threads):
     if shutil.which("t_coffee") is None:
-        raise Exception("t_coffee not found in PATH")
+        raise FileNotFoundError("t_coffee not found in PATH")
     with TemporaryDirectory() as work_dir:
         combined_fasta = path.join(work_dir, 'combined.fasta')
         template_file = path.join(work_dir, 'template.txt')
