@@ -1,7 +1,6 @@
 from Bio import AlignIO, SeqIO, PDB
-import json
 
-def tm_pos(aln_file, pdb_file, out_file, query, ref_data):
+def tm_pos(aln_file, pdb_file, query, ref_data):
     ref = ref_data['id']
     tms = ref_data['tms']
 
@@ -68,6 +67,4 @@ def tm_pos(aln_file, pdb_file, out_file, query, ref_data):
     if warnings:
         out_data['warnings'] = warnings
 
-    # Save as json file
-    with open(out_file, 'w') as out_f:
-        json.dump(out_data, out_f, indent = 2)
+    return out_data

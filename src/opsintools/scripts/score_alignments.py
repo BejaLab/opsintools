@@ -2,7 +2,7 @@ import re
 from opsintools.classes.USalign import USalign
 from pathlib import Path
 
-def score_alignments(alignment_files, n_reps, min_seq_id, must_include):
+def score_alignments(alignment_files, n_reps, max_seq_id, must_include):
 
     # Create an empty dictionary for RMSD valuse per representative
     rmsd_dict = {}
@@ -15,7 +15,7 @@ def score_alignments(alignment_files, n_reps, min_seq_id, must_include):
     for aln_file in alignment_files:
         # Read the aln file
         aln = USalign(aln_file)
-        if aln.seq_id >= min_seq_id:
+        if aln.seq_id <= max_seq_id:
             ref_pdb, query_pdb = aln.pdb_files
             ref_name = Path(ref_pdb).stem
             rmsd_dict[ref_name] = aln.rmsd
@@ -23,7 +23,7 @@ def score_alignments(alignment_files, n_reps, min_seq_id, must_include):
     # Sort the rmsd dictrionary by rmsd score
     sorted_rmsd = dict(sorted(rmsd_dict.items(), key = lambda x: x[1]))
 
-    output_list = must_include
+    output_list = must_include.copy()
     n = len(must_include)
     for ref_name in sorted_rmsd.keys():
         if n >= n_reps: break
