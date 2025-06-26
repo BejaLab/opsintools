@@ -18,7 +18,6 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "pyfaidx>=0.8",
     "biopython>=1.78"
 ]
 
@@ -28,3 +27,4 @@ dependencies = [
 
 [project.scripts]
 opsinmap3d = "opsintools:opsinmap3d_cli"
+opsinalign3d = "opsintools:opsinalign3d_cli"

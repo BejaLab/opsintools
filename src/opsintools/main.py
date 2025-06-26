@@ -1,9 +1,10 @@
-from pathlib import Path
 from glob import glob
 from os import path, makedirs
 import json, re, logging
+from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Final
+from opsintools.classes.Tcoffee import Tcoffee
 
 # Constants
 PAD_N: Final[int]= 30
@@ -12,7 +13,6 @@ THREADS: Final[int] = 1
 N_REPS: Final[int] = 20
 MAX_SEQ_ID: Final[float] = 0.9
 METHODS: list[str] = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa' ]
-ALL_METHODS: list[str] = [ 'test_pair', 'fast_pair', 'exon3_pair', 'exon2_pair', 'exon_pair', 'blastr_pair', 'promo_pair', 'clean_slow_pair', 'slow_pair', 'hash_pair', 'biphasic_pair', 'proba_prfpair', 'fs_pair', 'proba_pair', 'best_pair4prot', 'best_pair4rna', 'lalign_id_pair', 'fs_lalign_id_pair', 'seq_pair', 'externprofile_pair', 'hh_pair', 'co_pair', 'cwprofile_pair', 'cdna_fast_pair', 'cdna_cfast_pair', 'old_clustalo_pair', 'mafftsparsecore_pair', 'dynamic_pair', '3dcoffee_pair', 'expresso_pair', 'accurate_pair', 'psicoffee_pair', 'clustaloNF_pair', 'clustalw2_pair', 'clustalw_pair', 'uppNF_pair', 'upp_pair', 'msa_pair', 'dca_pair', 'dialigntx_pair', 'dialignt_pair', 'poa_pair', 'msaprobs_pair', 'probcons_pair', 'probconsRNA_pair', 'muscle_pair', 'mus4_pair', 't_coffee_pair', 'pcma_pair', 'kalign_pair', 'amap_pair', 'proda_pair', 'prank_pair', 'fsa_pair', 'consan_pair', 'famsa_pair', 'align_pdbpair', 'lalign_pdbpair', 'extern_pdbpair', 'thread_pair', 'fugue_pair', 'pdb_pair', 'sap_pair', 'sara_pair', 'daliweb_pair', 'dali_pair', 'mustang_pair', 'TMalign_pair', 'ktup_msa', 'blastp_msa', 'old_clustalo_msa', 'dynamic_msa', '3dcoffee_msa', 'expresso_msa', 'accurate_msa', 'psicoffee_msa', 'famsa_msa', 'clustalo_msa', 'mafft_msa', 'mafftginsi_msa', 'mafftfftns1_msa', 'mafftfftnsi_msa', 'mafftnwnsi_msa', 'mafftsparsecore_msa', 'mafftsparsecore_msa', 'mafftlinsi_msa', 'maffteinsi_msa', 'maffteinsi_pair', 'clustaloNF_msa', 'clustalw2_msa', 'clustalw_msa', 'uppNF_msa', 'upp_msa', 'msa_msa', 'dca_msa', 'dialigntx_msa', 'dialignt_msa', 'poa_msa', 'msaprobs_msa', 'probcons_msa', 'probconsRNA_msa', 'muscle_msa', 'mus4_msa', 't_coffee_msa', 'pcma_msa', 'kalign_msa', 'amap_msa', 'proda_msa', 'fsa_msa', 'tblastx_msa', 'tblastpx_msa', 'plib_msa', 'famsa_msa' ] 
 
 class OpsinToolsLoggerFormatter(logging.Formatter):
     """
@@ -36,12 +36,12 @@ class OpsinToolsLoggerFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, datefmt = "%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
 
-def read_database(data_dir: str) -> tuple[dict, dict, str, list]:
+def read_database(data_dir: str) -> tuple[dict, dict, list]:
     """
     checks the opsinmap3d database
 
     :param data_dir: data directory
-    :return: tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, rep_fasta (fasta of representatives), must_list (list of reps to be included always)
+    :return: tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, must_list (list of reps to be included always)
     """
     if not path.exists(data_dir):
         raise FileExistsError(f"The data directory {data_dir} does not exist")
@@ -54,21 +54,66 @@ def read_database(data_dir: str) -> tuple[dict, dict, str, list]:
     ref['pdb'] = path.join(rep_dir, ref['id'] + '.pdb')
     rep_pdbs: list[str] = glob(path.join(rep_dir, '*.pdb'))
     rep_dict: dict = { Path(rep_pdb).stem: rep_pdb for rep_pdb in rep_pdbs }
-    rep_fasta: str = path.join(data_dir, 'reps.fasta')
     must_txt: str = path.join(data_dir, 'must.txt')
     must_list: list = []
     with open(must_txt) as file:
         for line in file:
             must_list.append(line.rstrip())
 
-    if not path.isfile(rep_fasta):
-        raise FileNotFoundError("reps.fasta is not found in the data directory")
     if not path.isfile(ref['pdb']):
         raise FileNotFoundError(f"{ref['pdb']} file not found in the data directory")
     if len(rep_pdbs) == 0:
         raise FileNotFoundError("Expected several files in reps/ in the data directory, found zero instead")
 
-    return ref, rep_dict, rep_fasta, must_list
+    return ref, rep_dict, must_list
+
+def create_output_dir(dir_name, force = False):
+    if path.exists(dir_name):
+        if not path.isdir(dir_name):
+            raise FileExistsError(f"The path {dir_name} exists and is not a directory")
+        if not force:
+            raise FileExistsError(f"Directory {dir_name} exists, not overriding")
+    else:
+        makedirs(dir_name)
+
+def opsinalign3d(
+        query_pdbs: list[str],
+        output_dir: str,
+        methods: list = METHODS,
+        threads: int = THREADS,
+        force: bool = False) -> Tcoffee | None:
+    """
+    runs the opsinalign3d workflow
+
+    :param query_pdbs: input PDB files
+    :param output_dir: output directory path
+    :param methods: methods to be used for the structural alignment
+    :param threads: number of threads
+    :param force: whether to overwrite data in the output directory if exists
+    """
+    from opsintools.scripts.t_coffee import t_coffee, check_t_coffee_methods
+    from opsintools.scripts.tm_pos import tm_pos
+    from multiprocessing import Pool
+
+    logger = logging.getLogger(__name__)
+    logger.propagate = False
+
+    check_t_coffee_methods(methods)
+
+    create_output_dir(output_dir, force)
+    t_coffee_aln = path.join(output_dir, 't_coffee.aln')
+    pdb_dict = {}
+    for query_pdb in query_pdbs:
+        pdb_stem = Path(query_pdb).stem
+        if pdb_stem in pdb_dict:
+            raise ValueError(f"Duplicate query name: {pdb_stem}")
+        pdb_dict[pdb_stem] = query_pdb
+
+    logger.info("Doing the structural alignment")
+    t_coffee(pdb_dict, t_coffee_aln, methods, threads)
+    output = Tcoffee(t_coffee_aln)
+    logger.info("Finished")
+    return output
 
 def opsinmap3d(
         query_pdb: str,
@@ -104,48 +149,27 @@ def opsinmap3d(
 
     logger = logging.getLogger(__name__)
     logger.propagate = False
-    for method in methods:
-        if method not in ALL_METHODS:
-            raise ValueError(f"{method} is not supported")
 
     logger.info("Checking the input")
 
-    query_id: str = Path(query_pdb).stem
+    check_t_coffee_methods(methods)
+
     aln_dir: str = path.join(output_dir, "alignments")
 
     if not path.isfile(query_pdb):
         raise FileNotFoundError(f"Input file {query_pdb} not found")
 
-    if not re.search('^[\\w+-.]+$', query_id):
-        raise ValueError(f"Query name should only contain alphanumeric symbols or [_+-.]: '{query_id}'")
-
-    if path.exists(output_dir):
-        if not path.isdir(output_dir):
-            raise FileExistsError(f"The path {output_dir} exists and is not a directory")
-        if not force:
-            raise FileExistsError(f"Directory {output_dir} exists, not overriding")
-    else:
-        makedirs(output_dir)
-
-    if path.exists(aln_dir):
-        if not path.isdir(aln_dir):
-            raise FileExistsError(f"The path {aln_dir} exists and is not a directory")
-        if not force:
-            raise FileExistsError(f"Directory {aln_dir} exists, not overriding")
-    else:
-        makedirs(aln_dir)
+    create_output_dir(output_dir, force)
+    create_output_dir(aln_dir, force)
 
     ref: dict
     rep_dict: dict
-    rep_fasta: str
     must_list: list
-    ref, rep_dict, rep_fasta, must_list = read_database(data_dir)
+    ref, rep_dict, must_list = read_database(data_dir)
 
     aln_to_ref: str = path.join(output_dir, 'aln_to_ref.txt')
     trimmed_pdb: str = path.join(output_dir, 'trimmed.pdb')
-    trimmed_fasta: str = path.join(output_dir, 'trimmed.fasta')
     t_coffee_aln: str = path.join(output_dir, 't_coffee.aln')
-    t_coffee_log: str = path.join(output_dir, 't_coffee.log')
     json_output: str = path.join(output_dir, 'opsinmap.json')
 
     logging.info("Aligning the query to the reference")
@@ -154,37 +178,58 @@ def opsinmap3d(
     rep_alns: dict = { rep_id: path.join(output_dir, "alignments", rep_id + '.txt') for rep_id in rep_dict }
 
     logging.info("Trimming the query")
-    prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_fasta, trimmed_pdb, query_id, pad_n = pad_n, pad_c = pad_c)
+    prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
-    logger.info("Picking representatives for multiple structural alignment")
+    logger.info("Picking representatives for structural alignment")
     with Pool(threads) as pool:
         results: list = pool.starmap(us_align, [ (rep_dict[rep_id], trimmed_pdb, rep_alns[rep_id]) for rep_id in rep_dict ])
 
     chosen_templates: list = score_alignments(rep_alns.values(), n_templates, max_seq_id, must_list)
-    chosen_pdbs: dict = { rep: rep_dict[rep] for rep in chosen_templates }
+    chosen_pdbs: dict = { 'query': trimmed_pdb }
+    for rep in chosen_templates:
+        chosen_pdbs[rep] = rep_dict[rep]
 
     logger.info("Doing the structural alignment")
-    t_coffee(query_id, trimmed_pdb, trimmed_fasta, chosen_pdbs, rep_fasta, t_coffee_aln, t_coffee_log, methods, threads)
+    t_coffee(chosen_pdbs, t_coffee_aln, methods = methods, threads = threads)
 
-    logger.info("Writing the output")
-    output: dict = tm_pos(t_coffee_aln, trimmed_pdb, query_id, ref)
+    output: dict = tm_pos(t_coffee_aln, trimmed_pdb, 'query', ref)
 
     with open(json_output, 'w') as file:
         json.dump(output, file, indent = 2)
     logger.info("Finished")
     return output
 
-def opsinmap3d_cli() -> None:
+def opsinalign3d_cli() -> None:
     from argparse import ArgumentParser
     from sys import argv
 
-    # Define logger
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(OpsinToolsLoggerFormatter())
-    logger.addHandler(ch)
+    parser = ArgumentParser(description = 'Opsin alignment with t-coffee.')
+
+    main_group = parser.add_argument_group('Arguments')
+
+    main_group.add_argument('-i', nargs='+', metavar = 'FILENAME', required = True, help = 'input PDB structures (only chain A will be used)')
+    main_group.add_argument('-o', metavar = 'DIRNAME', required = True, help = 'output directory')
+    main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
+    main_group.add_argument('-t', metavar = 'INT', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
+
+    adv_group = parser.add_argument_group('Advanced')
+
+    adv_group.add_argument('--methods', default = ','.join(METHODS), help = f't-coffee methods to use (default: {",".join(METHODS)})')
+
+    args = parser.parse_args()
+
+    methods = args.methods.split(',')
+    run_with_logger(opsinalign3d,
+        query_pdbs = args.i,
+        output_dir = args.o,
+        methods = methods,
+        threads = args.t,
+        force = args.f,
+    )
+
+def opsinmap3d_cli():
+    from argparse import ArgumentParser
+    from sys import argv
 
     parser = ArgumentParser(description = 'Opsin homology based for a query 3D structure.')
 
@@ -207,8 +252,30 @@ def opsinmap3d_cli() -> None:
     args = parser.parse_args()
 
     methods = args.methods.split(',')
+
+    run_with_logger(opsinmap3d,
+        query_pdb = args.i,
+        output_dir = args.o,
+        data_dir = args.d,
+        n_templates = args.n,
+        methods = methods,
+        threads = args.t,
+        force = args.f,
+        pad_n = args.pad_n, pad_c = args.pad_c, max_seq_id = args.max_seq_id
+    )
+
+def run_with_logger(func, **args):
+
+    # Define logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    ch.setFormatter(OpsinToolsLoggerFormatter())
+    logger.addHandler(ch)
+
     try:
-        opsinmap3d(args.i, args.o, args.d, n_templates = args.n, methods = methods, threads = args.t, force = args.f, pad_n = args.pad_n, pad_c = args.pad_c, max_seq_id = args.max_seq_id)
+        func(**args)
     except CalledProcessError as e:
         logger.fatal(f"Got return code {e.returncode}: {e.stderr.decode()}")
     except FileNotFoundError as e:
@@ -219,5 +286,5 @@ def opsinmap3d_cli() -> None:
         logger.fatal(f"Unexpected value: {e}")
     except AssertionError as e:
         logger.fatal(f"Assumption violated: {e}")
-    except Exception as e:
-        logger.fatal(f"An error occurred: {e}")
+    #except Exception as e:
+    #    logger.fatal(f"An error occurred: {e}")
