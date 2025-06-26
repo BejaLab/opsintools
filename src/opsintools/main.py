@@ -43,6 +43,8 @@ def read_database(data_dir: str) -> tuple[dict, dict, str, list]:
     :param data_dir: data directory
     :return: tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, rep_fasta (fasta of representatives), must_list (list of reps to be included always)
     """
+    if not path.exists(data_dir):
+        raise FileExistsError(f"The data directory {data_dir} does not exist")
     ref_json: str = path.join(data_dir, 'ref.json')
     if not path.isfile(ref_json):
         raise FileNotFoundError(f"File {ref_json} does not exist")
@@ -98,94 +100,79 @@ def opsinmap3d(
     from opsintools.scripts.score_alignments import score_alignments
     from opsintools.scripts.t_coffee import t_coffee
     from opsintools.scripts.tm_pos import tm_pos
-    from importlib import resources
     from multiprocessing import Pool
 
     logger = logging.getLogger(__name__)
     logger.propagate = False
-    try:
-        for method in methods:
-            if method not in ALL_METHODS:
-                raise ValueError(f"{method} is not supported")
+    for method in methods:
+        if method not in ALL_METHODS:
+            raise ValueError(f"{method} is not supported")
 
-        logger.info("Checking the input")
+    logger.info("Checking the input")
 
-        query_id: str = Path(query_pdb).stem
-        aln_dir: str = path.join(output_dir, "alignments")
+    query_id: str = Path(query_pdb).stem
+    aln_dir: str = path.join(output_dir, "alignments")
 
-        if not path.isfile(query_pdb):
-            raise FileNotFoundError(f"Input file {query_pdb} not found")
+    if not path.isfile(query_pdb):
+        raise FileNotFoundError(f"Input file {query_pdb} not found")
 
-        if not re.search('^[\\w+-]+$', query_id):
-            raise ValueError(f"Query name should only contain alphanumeric symbols or [_+-]: '{query_id}'")
+    if not re.search('^[\\w+-.]+$', query_id):
+        raise ValueError(f"Query name should only contain alphanumeric symbols or [_+-.]: '{query_id}'")
 
-        if path.exists(output_dir):
-            if not path.isdir(output_dir):
-                raise FileExistsError(f"The path {output_dir} exists and is not a directory")
-            if not force:
-                raise FileExistsError(f"Directory {output_dir} exists, not overriding")
-        else:
-            makedirs(output_dir)
+    if path.exists(output_dir):
+        if not path.isdir(output_dir):
+            raise FileExistsError(f"The path {output_dir} exists and is not a directory")
+        if not force:
+            raise FileExistsError(f"Directory {output_dir} exists, not overriding")
+    else:
+        makedirs(output_dir)
 
-        if path.exists(aln_dir):
-            if not path.isdir(aln_dir):
-                raise FileExistsError(f"The path {aln_dir} exists and is not a directory")
-            if not force:
-                raise FileExistsError(f"Directory {aln_dir} exists, not overriding")
-        else:
-            makedirs(aln_dir)
+    if path.exists(aln_dir):
+        if not path.isdir(aln_dir):
+            raise FileExistsError(f"The path {aln_dir} exists and is not a directory")
+        if not force:
+            raise FileExistsError(f"Directory {aln_dir} exists, not overriding")
+    else:
+        makedirs(aln_dir)
 
-        ref: dict
-        rep_dict: dict
-        rep_fasta: str
-        must_list: list
-        ref, rep_dict, rep_fasta, must_list = read_database(data_dir)
+    ref: dict
+    rep_dict: dict
+    rep_fasta: str
+    must_list: list
+    ref, rep_dict, rep_fasta, must_list = read_database(data_dir)
 
-        aln_to_ref: str = path.join(output_dir, 'aln_to_ref.txt')
-        trimmed_pdb: str = path.join(output_dir, 'trimmed.pdb')
-        trimmed_fasta: str = path.join(output_dir, 'trimmed.fasta')
-        t_coffee_aln: str = path.join(output_dir, 't_coffee.fasta')
-        t_coffee_log: str = path.join(output_dir, 't_coffee.log')
-        json_output: str = path.join(output_dir, 'opsinmap.json')
+    aln_to_ref: str = path.join(output_dir, 'aln_to_ref.txt')
+    trimmed_pdb: str = path.join(output_dir, 'trimmed.pdb')
+    trimmed_fasta: str = path.join(output_dir, 'trimmed.fasta')
+    t_coffee_aln: str = path.join(output_dir, 't_coffee.aln')
+    t_coffee_log: str = path.join(output_dir, 't_coffee.log')
+    json_output: str = path.join(output_dir, 'opsinmap.json')
 
-        logging.info("Aligning the query to the reference")
-        us_align(ref['pdb'], query_pdb, aln_to_ref)
+    logging.info("Aligning the query to the reference")
+    us_align(ref['pdb'], query_pdb, aln_to_ref)
 
-        rep_alns: dict = { rep_id: path.join(output_dir, "alignments", rep_id + '.txt') for rep_id in rep_dict }
+    rep_alns: dict = { rep_id: path.join(output_dir, "alignments", rep_id + '.txt') for rep_id in rep_dict }
 
-        logging.info("Trimming the query")
-        prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_fasta, trimmed_pdb, query_id, pad_n = pad_n, pad_c = pad_c)
+    logging.info("Trimming the query")
+    prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_fasta, trimmed_pdb, query_id, pad_n = pad_n, pad_c = pad_c)
 
-        logger.info("Picking representatives for multiple structural alignment")
-        with Pool(threads) as pool:
-            results: list = pool.starmap(us_align, [ (rep_dict[rep_id], trimmed_pdb, rep_alns[rep_id]) for rep_id in rep_dict ])
+    logger.info("Picking representatives for multiple structural alignment")
+    with Pool(threads) as pool:
+        results: list = pool.starmap(us_align, [ (rep_dict[rep_id], trimmed_pdb, rep_alns[rep_id]) for rep_id in rep_dict ])
 
-        chosen_templates: list = score_alignments(rep_alns.values(), n_templates, max_seq_id, must_list)
-        chosen_pdbs: dict = { rep: rep_dict[rep] for rep in chosen_templates }
+    chosen_templates: list = score_alignments(rep_alns.values(), n_templates, max_seq_id, must_list)
+    chosen_pdbs: dict = { rep: rep_dict[rep] for rep in chosen_templates }
 
-        logger.info("Doing the structural alignment")
-        t_coffee(query_id, trimmed_pdb, trimmed_fasta, chosen_pdbs, rep_fasta, t_coffee_aln, t_coffee_log, methods, threads)
+    logger.info("Doing the structural alignment")
+    t_coffee(query_id, trimmed_pdb, trimmed_fasta, chosen_pdbs, rep_fasta, t_coffee_aln, t_coffee_log, methods, threads)
 
-        logger.info("Writing the output")
-        output: dict = tm_pos(t_coffee_aln, trimmed_pdb, query_id, ref)
+    logger.info("Writing the output")
+    output: dict = tm_pos(t_coffee_aln, trimmed_pdb, query_id, ref)
 
-        with open(json_output, 'w') as file:
-            json.dump(output, file, indent = 2)
-        logger.info("Finished")
-        return output
-    except CalledProcessError as e:
-        logger.fatal(f"Got return code {e.returncode}: {e.stderr.decode()}")
-    except FileNotFoundError as e:
-        logger.fatal(e)
-    except FileExistsError as e:
-        logger.fatal(e)
-    except ValueError as e:
-        logger.fatal(f"Unexpected value: {e}")
-    except AssertionError as e:
-        logger.fatal(f"Assumption violated: {e}")
-    except Exception as e:
-        logger.fatal(f"An error occurred: {e}")
-    return None
+    with open(json_output, 'w') as file:
+        json.dump(output, file, indent = 2)
+    logger.info("Finished")
+    return output
 
 def opsinmap3d_cli() -> None:
     from argparse import ArgumentParser
@@ -220,5 +207,17 @@ def opsinmap3d_cli() -> None:
     args = parser.parse_args()
 
     methods = args.methods.split(',')
-    print(f"opsinmap3d('{args.i}', '{args.o}', '{args.d}')")
-    opsinmap3d(args.i, args.o, args.d, n_templates = args.n, methods = methods, threads = args.t, force = args.f, pad_n = args.pad_n, pad_c = args.pad_c, max_seq_id = args.max_seq_id)
+    try:
+        opsinmap3d(args.i, args.o, args.d, n_templates = args.n, methods = methods, threads = args.t, force = args.f, pad_n = args.pad_n, pad_c = args.pad_c, max_seq_id = args.max_seq_id)
+    except CalledProcessError as e:
+        logger.fatal(f"Got return code {e.returncode}: {e.stderr.decode()}")
+    except FileNotFoundError as e:
+        logger.fatal(e)
+    except FileExistsError as e:
+        logger.fatal(e)
+    except ValueError as e:
+        logger.fatal(f"Unexpected value: {e}")
+    except AssertionError as e:
+        logger.fatal(f"Assumption violated: {e}")
+    except Exception as e:
+        logger.fatal(f"An error occurred: {e}")

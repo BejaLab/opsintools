@@ -26,7 +26,15 @@ def query_reps_template(chosen_pdbs, query_pdb, query_id, template_file):
 def run_t_coffee(work_dir, fasta_file, template_file, output_alignment, log_file, methods, threads):
     output_alignment_real = path.realpath(output_alignment)
     log_file_real = path.realpath(log_file)
-    args = { 'outfile': output_alignment_real, 'method': ','.join(methods), 'template_file': template_file, 'pdb_min_sim': 90, 'pdb_min_cov': 0, 'thread': threads }
+    args = {
+        'outfile': output_alignment_real,
+        'output': 'aln,score_ascii',
+        'method': ','.join(methods),
+        'template_file': template_file,
+        'pdb_min_sim': 90,
+        'pdb_min_cov': 0,
+        'thread': threads
+    }
     cmd = [ 't_coffee', fasta_file ]
     for key, value in args.items():
         cmd +=[ '-' + key, str(value) ]
