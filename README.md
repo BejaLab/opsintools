@@ -22,7 +22,7 @@ Use the provided environment definition: `conda env create -n opsintools -f env.
 
 ## opsinmap3d
 
-Opsin homology based on protein structures. The input is an opsin structure in PDB format and a suitable reference dataset (can be dowloaded from [opsintools-build](https://github.com/BejaLab/opsintools-build/releases)), the output is the mapping between positions in the query and the positions in the reference in the transmembrane regions. The output directory will contain:
+Opsin homology based on protein structures. The input is an opsin structure in PDB format and a suitable reference dataset (can be dowloaded from [opsintools-build](https://github.com/BejaLab/opsintools-build/releases)), the output is the mapping between positions in the query and the positions in the reference in the transmembrane regions. Both the CLI and the API generate output files located in the specified directory:
 
 * `aln_to_ref.txt` - alignment of the query to the reference
 * `trimmed.pdb` - trimmed query structure
@@ -31,9 +31,15 @@ Opsin homology based on protein structures. The input is an opsin structure in P
 * `t_coffee.aln.log` - structural alignment log
 * `opsinmap.json` - json file with the position mapping
 
+The API function `opsinmap3d` returns the dictionary mapping reference positions to the query positions as its output.
+
+See `opsinmap3d -h` or `from opsintools import opsinmap3d; help(opsinmap3d)` for more details.
+
 ## opsinalign3d
 
 A user-friendly wrapper for running `t-coffee` on a set of PDB files and parsing the results. The output is an object of the custom class `Tcoffee`. The output directory will contain:
 
 * `t_coffee.aln` - structural alignment
 * `t_coffee.log` - structural alignment log
+
+See `opsinalign3d -h` or `from opsintools import opsinalign3d; help(opsinalign3d)` for more details.
