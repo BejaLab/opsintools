@@ -143,7 +143,7 @@ def opsinmap3d(
     from opsintools.scripts.prot_trim_filter import prot_trim_filter
     from opsintools.scripts.us_align import us_align
     from opsintools.scripts.score_alignments import score_alignments
-    from opsintools.scripts.t_coffee import t_coffee
+    from opsintools.scripts.t_coffee import t_coffee, check_t_coffee_methods
     from opsintools.scripts.tm_pos import tm_pos
     from multiprocessing import Pool
 
