@@ -236,7 +236,7 @@ def opsinmap3d_cli():
     main_group = parser.add_argument_group('Arguments')
 
     main_group.add_argument('-i', metavar = 'FILENAME', required = True, help = 'query PDB structure (only chain A will be used)')
-    main_group.add_argument('-d', metavar = 'FILENAME', required = False, help = 'opsin data directory (the default is microbial rhodopsins)')
+    main_group.add_argument('-d', metavar = 'FILENAME', required = True, help = 'opsin data directory')
     main_group.add_argument('-o', metavar = 'DIRNAME', required = True, help = 'output directory')
     main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
     main_group.add_argument('-n', metavar = 'INT', type = int, default = THREADS, help = f'number of template structures to use (default: {N_REPS})')
