@@ -6,6 +6,8 @@ from subprocess import CalledProcessError
 from typing import Final
 from opsintools.classes.Tcoffee import Tcoffee
 
+logger = logging.getLogger(__name__)
+
 # Constants
 PAD_N: Final[int]= 30
 PAD_C: Final[int] = 30
@@ -95,9 +97,6 @@ def opsinalign3d(
     from opsintools.scripts.tm_pos import tm_pos
     from multiprocessing import Pool
 
-    logger = logging.getLogger(__name__)
-    logger.propagate = False
-
     check_t_coffee_methods(methods)
 
     create_output_dir(output_dir, force)
@@ -147,9 +146,6 @@ def opsinmap3d(
     from opsintools.scripts.tm_pos import tm_pos
     from multiprocessing import Pool
 
-    logger = logging.getLogger(__name__)
-    logger.propagate = False
-
     logger.info("Checking the input")
 
     check_t_coffee_methods(methods)
@@ -172,12 +168,12 @@ def opsinmap3d(
     t_coffee_aln: str = path.join(output_dir, 't_coffee.aln')
     json_output: str = path.join(output_dir, 'opsinmap.json')
 
-    logging.info("Aligning the query to the reference")
+    logger.info("Aligning the query to the reference")
     us_align(ref['pdb'], query_pdb, aln_to_ref)
 
     rep_alns: dict = { rep_id: path.join(output_dir, "alignments", rep_id + '.txt') for rep_id in rep_dict }
 
-    logging.info("Trimming the query")
+    logger.info("Trimming the query")
     prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
     logger.info("Picking representatives for structural alignment")
@@ -267,7 +263,6 @@ def opsinmap3d_cli():
 def run_with_logger(func, **args):
 
     # Define logger
-    logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
