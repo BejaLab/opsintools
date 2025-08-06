@@ -70,5 +70,3 @@ def trim_struct(structure, trimmed_pdb, start, end):
 def get_first_and_last(structure):
     first, *_, last = structure[0]['A'].get_residues()
     return first.id[1], last.id[1]
-
-

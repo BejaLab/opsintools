@@ -60,13 +60,13 @@ def tm_pos(aln_file, pdb_file, query, ref_data):
     for ref_ix, tm_label in membrane_indexes:
         ref_pos = ref_index_to_pos[ref_ix]
         query_ix, ref_res, query_res, ref_score, query_score = aln[ref_ix]
-        query_pos = query_index_to_pos[query_ix]
+        query_pos = query_index_to_pos[query_ix] if query_ix >= 0 else -1
         score = int(query_score) if query_score != "-" else -1
         tm_map[ref_pos] = { "ref_residue": ref_res, "query_residue": query_res, "helix": tm_label, "query_pos": query_pos, "query_score": score }
 
     # Add a description to the data that will be the json file
     out_data = {
-        "description": f"Mapping for rhodopsin residues inside the transmembrane. Key is position number: (residue in {ref}, residue in {query} and the number of the TM helix",
+        "description": f"Mapping for membrane-embedded residues. Key is position number: (residue in {ref}, residue in {query} and the number of the TM helix",
         "alignment_map": tm_map
     }
     if warnings:

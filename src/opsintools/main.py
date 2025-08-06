@@ -38,12 +38,12 @@ class OpsinToolsLoggerFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, datefmt = "%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
 
-def read_database(data_dir: str) -> tuple[dict, dict, list]:
+def read_database(data_dir: str, only_exptl: bool) -> tuple[dict, dict]:
     """
     checks the opsinmap3d database
 
     :param data_dir: data directory
-    :return: tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, must_list (list of reps to be included always)
+    :return: tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, pdb_list (list of reps to be included always)
     """
     if not path.exists(data_dir):
         raise FileExistsError(f"The data directory {data_dir} does not exist")
@@ -52,22 +52,33 @@ def read_database(data_dir: str) -> tuple[dict, dict, list]:
         raise FileNotFoundError(f"File {ref_json} does not exist")
     with open(ref_json) as file:
         ref: dict = json.load(file)
+
     rep_dir: str = path.join(data_dir, 'reps')
     ref['pdb'] = path.join(rep_dir, ref['id'] + '.pdb')
-    rep_pdbs: list[str] = glob(path.join(rep_dir, '*.pdb'))
-    rep_dict: dict = { Path(rep_pdb).stem: rep_pdb for rep_pdb in rep_pdbs }
-    must_txt: str = path.join(data_dir, 'must.txt')
-    must_list: list = []
-    with open(must_txt) as file:
-        for line in file:
-            must_list.append(line.rstrip())
-
     if not path.isfile(ref['pdb']):
         raise FileNotFoundError(f"{ref['pdb']} file not found in the data directory")
-    if len(rep_pdbs) == 0:
-        raise FileNotFoundError("Expected several files in reps/ in the data directory, found zero instead")
 
-    return ref, rep_dict, must_list
+    exptl_txt: str = path.join(data_dir, 'exptl.txt')
+    exptl_dict: dict = {}
+    with open(exptl_txt) as file:
+        for line in file:
+            rep_name = line.rstrip()
+            exptl_dict[rep_name] = True
+
+    rep_dict: dict = {}
+    for rep_pdb in glob(path.join(rep_dir, '*.pdb')):
+        rep_name = Path(rep_pdb).stem
+        if rep_name in exptl_dict or not only_exptl:
+            rep_dict[rep_name] = { 'filename': rep_pdb, 'pdb': exptl_dict.pop(rep_name, False), 'ref': False }
+            rep_dict[rep_name]['ref'] = False
+
+    rep_dict[ref['id']]['ref'] = True
+    rep_dict[ref['id']]['pdb'] = True
+
+    if sum(exptl_dict.values()) > 0:
+        raise FileNotFoundError("Some of the PDBs listed in the data exptl.txt file are missing from the reps/ subdirectory")
+
+    return ref, rep_dict
 
 def create_output_dir(dir_name, force = False):
     if path.exists(dir_name):
@@ -101,15 +112,15 @@ def opsinalign3d(
 
     create_output_dir(output_dir, force)
     t_coffee_aln = path.join(output_dir, 't_coffee.aln')
-    pdb_dict = {}
+    exptl_dict = {}
     for query_pdb in query_pdbs:
         pdb_stem = Path(query_pdb).stem
-        if pdb_stem in pdb_dict:
+        if pdb_stem in exptl_dict:
             raise ValueError(f"Duplicate query name: {pdb_stem}")
-        pdb_dict[pdb_stem] = query_pdb
+        exptl_dict[pdb_stem] = query_pdb
 
     logger.info("Doing the structural alignment")
-    t_coffee(pdb_dict, t_coffee_aln, methods, threads)
+    t_coffee(exptl_dict, t_coffee_aln, methods, threads)
     output = Tcoffee(t_coffee_aln)
     logger.info("Finished")
     return output
@@ -124,7 +135,9 @@ def opsinmap3d(
         force: bool = False,
         pad_n: int = PAD_N,
         pad_c: int = PAD_C,
-        max_seq_id: float = MAX_SEQ_ID) -> dict | None:
+        max_seq_id: float = MAX_SEQ_ID,
+        only_exptl: bool = False,
+        prefer_exptl: bool = False) -> dict | None:
     """
     runs the opsinmap3d workflow
 
@@ -160,8 +173,8 @@ def opsinmap3d(
 
     ref: dict
     rep_dict: dict
-    must_list: list
-    ref, rep_dict, must_list = read_database(data_dir)
+    pdb_list: list
+    ref, rep_dict = read_database(data_dir, only_exptl)
 
     aln_to_ref: str = path.join(output_dir, 'aln_to_ref.txt')
     trimmed_pdb: str = path.join(output_dir, 'trimmed.pdb')
@@ -171,19 +184,26 @@ def opsinmap3d(
     logger.info("Aligning the query to the reference")
     us_align(ref['pdb'], query_pdb, aln_to_ref)
 
-    rep_alns: dict = { rep_id: path.join(output_dir, "alignments", rep_id + '.txt') for rep_id in rep_dict }
-
     logger.info("Trimming the query")
     prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
-    logger.info("Picking representatives for structural alignment")
-    with Pool(threads) as pool:
-        results: list = pool.starmap(us_align, [ (rep_dict[rep_id], trimmed_pdb, rep_alns[rep_id]) for rep_id in rep_dict ])
+    chosen_templates: list = []
+    if not n_templates or n_templates == 1:
+        chosen_templates = [ ref['id'] ]
+    elif n_templates >= len(rep_dict):
+        chosen_templates = list(rep_dict.keys())
+    else:
+        logger.info("Picking representatives for structural alignment")
+        rep_alns: dict = { rep_id: path.join(output_dir, "alignments", rep_id + '.txt') for rep_id in rep_dict }
+        preferred: list = [ rep_id for rep_id, rep in rep_dict.items() if rep['pdb'] ] if prefer_exptl else [ ref['id'] ]
+        with Pool(threads) as pool:
+            results: list = pool.starmap(us_align, [ (rep_dict[rep_id]['filename'], trimmed_pdb, rep_alns[rep_id]) for rep_id in rep_dict ])
+        chosen_templates = score_alignments(rep_alns.values(), max_seq_id, preferred)
+        chosen_templates = chosen_templates[:n_templates]
 
-    chosen_templates: list = score_alignments(rep_alns.values(), n_templates, max_seq_id, must_list)
     chosen_pdbs: dict = { 'query': trimmed_pdb }
     for rep in chosen_templates:
-        chosen_pdbs[rep] = rep_dict[rep]
+        chosen_pdbs[rep] = rep_dict[rep]['filename']
 
     logger.info("Doing the structural alignment")
     t_coffee(chosen_pdbs, t_coffee_aln, methods = methods, threads = threads)
@@ -203,10 +223,10 @@ def opsinalign3d_cli() -> None:
 
     main_group = parser.add_argument_group('Arguments')
 
-    main_group.add_argument('-i', nargs='+', metavar = 'FILENAME', required = True, help = 'input PDB structures (only chain A will be used)')
-    main_group.add_argument('-o', metavar = 'DIRNAME', required = True, help = 'output directory')
+    main_group.add_argument('-i', nargs='+', metavar = 'INPUT', required = True, help = 'input PDB structures (only chain A will be used)')
+    main_group.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output directory')
     main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
-    main_group.add_argument('-t', metavar = 'INT', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
+    main_group.add_argument('-t', metavar = 'THREADS', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
 
     adv_group = parser.add_argument_group('Advanced')
 
@@ -227,22 +247,24 @@ def opsinmap3d_cli():
     from argparse import ArgumentParser
     from sys import argv
 
-    parser = ArgumentParser(description = 'Opsin homology based for a query 3D structure.')
+    parser = ArgumentParser(description = 'Opsin homology based on 3D structure.')
 
     main_group = parser.add_argument_group('Arguments')
 
-    main_group.add_argument('-i', metavar = 'FILENAME', required = True, help = 'query PDB structure (only chain A will be used)')
-    main_group.add_argument('-d', metavar = 'FILENAME', required = True, help = 'opsin data directory')
-    main_group.add_argument('-o', metavar = 'DIRNAME', required = True, help = 'output directory')
+    main_group.add_argument('-i', metavar = 'INPUT', required = True, help = 'query PDB structure (only chain A will be used)')
+    main_group.add_argument('-d', metavar = 'DATADIR', required = True, help = 'opsin data directory')
+    main_group.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output directory')
     main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
-    main_group.add_argument('-n', metavar = 'INT', type = int, default = THREADS, help = f'number of template structures to use (default: {N_REPS})')
-    main_group.add_argument('-t', metavar = 'INT', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
+    main_group.add_argument('-n', metavar = 'N_REPS', type = int, default = THREADS, help = f'maximum number of template structures to use (default: {N_REPS})')
+    main_group.add_argument('-t', metavar = 'THREADS', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
 
     adv_group = parser.add_argument_group('Advanced')
 
+    adv_group.add_argument('--only-exptl', action = 'store_true', help = f'only use experimental structures (default: use predictions as well)')
+    adv_group.add_argument('--prefer-exptl', action = 'store_true', help = f'prefer experimental structure over predictions (default: choose by similarity only)')
     adv_group.add_argument('--pad-n', default = PAD_N, type = int, help = f'N-terminal padding for query trimming (default: {PAD_N})')
     adv_group.add_argument('--pad-c', default = PAD_C, type = int, help = f'C-terminal padding for query trimming (default: {PAD_C})')
-    adv_group.add_argument('--max-seq-id', default = MAX_SEQ_ID, type = int, help = f'Maximum sequence identity for templates (default: {MAX_SEQ_ID})')
+    adv_group.add_argument('--max-seq-id', default = MAX_SEQ_ID, type = int, help = f'maximum sequence identity for predicted templates (default: {MAX_SEQ_ID})')
     adv_group.add_argument('--methods', default = ','.join(METHODS), help = f't-coffee methods to use (default: {",".join(METHODS)})')
 
     args = parser.parse_args()
@@ -257,7 +279,7 @@ def opsinmap3d_cli():
         methods = methods,
         threads = args.t,
         force = args.f,
-        pad_n = args.pad_n, pad_c = args.pad_c, max_seq_id = args.max_seq_id
+        pad_n = args.pad_n, pad_c = args.pad_c, max_seq_id = args.max_seq_id, only_exptl = args.only_exptl, prefer_exptl = args.prefer_exptl
     )
 
 def run_with_logger(func, **args):
@@ -272,7 +294,10 @@ def run_with_logger(func, **args):
     try:
         func(**args)
     except CalledProcessError as e:
-        logger.fatal(f"Got return code {e.returncode}: {e.stderr.decode()}")
+        if e.stderr:
+            logger.fatal(f"Got return code {e.returncode}: {e.stderr.decode()}, check the log files for more details")
+        else:
+            logger.fatal(f"Got return code {e.returncode}, check the log files for more details")
     except FileNotFoundError as e:
         logger.fatal(e)
     except FileExistsError as e:

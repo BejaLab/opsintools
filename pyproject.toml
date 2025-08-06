@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opsintools"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name = "Valentin Umperovich", email = "valentinump@gmail.com" },
   { name = "Andrey Rozenberg", email = "alephreish@gmail.com" }
