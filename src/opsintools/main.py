@@ -54,9 +54,9 @@ def read_database(data_dir: str, only_exptl: bool) -> tuple[dict, dict]:
         ref: dict = json.load(file)
 
     rep_dir: str = path.join(data_dir, 'reps')
-    ref['pdb'] = path.join(rep_dir, ref['id'] + '.pdb')
-    if not path.isfile(ref['pdb']):
-        raise FileNotFoundError(f"{ref['pdb']} file not found in the data directory")
+    ref['filename'] = path.join(rep_dir, ref['id'] + '.pdb')
+    if not path.isfile(ref['filename']):
+        raise FileNotFoundError(f"{ref['filename']} file not found in the data directory")
 
     exptl_txt: str = path.join(data_dir, 'exptl.txt')
     exptl_dict: dict = {}
@@ -111,17 +111,17 @@ def opsinalign3d(
     check_t_coffee_methods(methods)
 
     create_output_dir(output_dir, force)
-    t_coffee_aln = path.join(output_dir, 't_coffee.aln')
-    exptl_dict = {}
+    t_coffee_aln: str = path.join(output_dir, 't_coffee.aln')
+    pdb_dict: dict = {}
     for query_pdb in query_pdbs:
-        pdb_stem = Path(query_pdb).stem
-        if pdb_stem in exptl_dict:
+        pdb_stem: str = Path(query_pdb).stem
+        if pdb_stem in pdb_dict:
             raise ValueError(f"Duplicate query name: {pdb_stem}")
-        exptl_dict[pdb_stem] = query_pdb
+        pdb_dict[pdb_stem] = query_pdb
 
     logger.info("Doing the structural alignment")
-    t_coffee(exptl_dict, t_coffee_aln, methods, threads)
-    output = Tcoffee(t_coffee_aln)
+    t_coffee(pdb_dict, t_coffee_aln, methods, threads)
+    output: Tcoffee | None = Tcoffee(t_coffee_aln)
     logger.info("Finished")
     return output
 
@@ -151,6 +151,8 @@ def opsinmap3d(
     :param pad_n: pad this number of residues to N-terminus when trimming the query
     :param pad_c: pad this number of residues to C-terminus when trimming the query
     :param max_seq_id: exclude templates with sequence identity higher than this
+    :param only_exptl: only use experimental structures
+    :param prefer_exptl: always prefer experimental structure over predictions
     """
     from opsintools.scripts.prot_trim_filter import prot_trim_filter
     from opsintools.scripts.us_align import us_align
@@ -182,10 +184,10 @@ def opsinmap3d(
     json_output: str = path.join(output_dir, 'opsinmap.json')
 
     logger.info("Aligning the query to the reference")
-    us_align(ref['pdb'], query_pdb, aln_to_ref)
+    us_align(ref['filename'], query_pdb, aln_to_ref)
 
     logger.info("Trimming the query")
-    prot_trim_filter(aln_to_ref, query_pdb, ref['pdb'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
+    prot_trim_filter(aln_to_ref, query_pdb, ref['filename'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
     chosen_templates: list = []
     if not n_templates or n_templates == 1:
@@ -208,7 +210,7 @@ def opsinmap3d(
     logger.info("Doing the structural alignment")
     t_coffee(chosen_pdbs, t_coffee_aln, methods = methods, threads = threads)
 
-    output: dict = tm_pos(t_coffee_aln, trimmed_pdb, 'query', ref)
+    output: dict = tm_pos(t_coffee_aln, trimmed_pdb, ref['filename'], 'query', ref)
 
     with open(json_output, 'w') as file:
         json.dump(output, file, indent = 2)

@@ -4,9 +4,11 @@ import shutil
 from os import path
 import os
 from Bio import SeqIO
+from Bio.Seq import Seq
 import warnings
 import re
 from pathlib import Path
+from opsintools.scripts import utils
 
 warnings.filterwarnings('ignore', message = ".*(can't determine PDB ID|Ignoring unrecognized record).*")
 
@@ -26,8 +28,7 @@ def check_pdb_file(pdb_name, pdb_file):
 def write_inputs(pdb_dict, fasta_file, template_file):
     with open(fasta_file, 'w') as fasta_fh, open(template_file, 'w') as templ_fh:
         for seq_id, pdb_file in pdb_dict.items():
-            record = next(SeqIO.parse(pdb_file, "pdb-atom"))
-            record.id = record.description = seq_id
+            record = utils.get_pdb_record(pdb_file, seq_id)
             SeqIO.write(record, fasta_fh, "fasta")
             pdb_file_name = Path(pdb_file).name
             templ_fh.write(f">{seq_id} _P_ {pdb_file_name}\n")

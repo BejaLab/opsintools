@@ -1,26 +1,35 @@
 from Bio import AlignIO, SeqIO, PDB
 from opsintools.classes.Tcoffee import Tcoffee
+from opsintools.scripts import utils
 
-def tm_pos(aln_file, pdb_file, query, ref_data):
+def get_pos_to_index(pdb_file):
+    """
+    Match residue positions (id as defined in ATOM) and 0-based indexes
+    in the (potentially trimmed) sequence
+    """
+    parser = PDB.PDBParser(QUIET = True)
+    structure = parser.get_structure("protein", pdb_file)
+    first_res = next(iter(structure[0]['A']))
+    pos = first_res.id[1]
+    record = utils.get_pdb_record(pdb_file)
+    pos_to_index = {}
+    for i, res in enumerate(record.seq):
+        pos_to_index[pos] = i
+        pos += 1
+    return pos_to_index
+
+def tm_pos(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
     ref = ref_data['id']
     tms = ref_data['tms']
 
     t_coffee = Tcoffee(aln_file)
     assert t_coffee.aln_score > -1, "Something went wrong: check the output of t_coffee"
 
-    parser = PDB.PDBParser(QUIET = True)
-    structure = parser.get_structure("protein", pdb_file)
+    query_pos_to_index = get_pos_to_index(query_pdb_file)
+    ref_pos_to_index   = get_pos_to_index(ref_pdb_file)
 
-    query_index_to_pos = {}
-    for index, res in enumerate(structure[0]['A']):
-        pos = res.id[1]
-        query_index_to_pos[index] = pos
-
-    ref_pos_to_index = {}
-    ref_index_to_pos = {}
-    for index, pos in enumerate(ref_data['res_pos']):
-        ref_pos_to_index[pos] = index
-        ref_index_to_pos[index] = pos
+    query_index_to_pos = { value: key for key, value in query_pos_to_index.items() }
+    ref_index_to_pos   = { value: key for key, value in ref_pos_to_index.items() }
 
     lys_index = ref_pos_to_index[ref_data['lysine']]
 
@@ -66,7 +75,7 @@ def tm_pos(aln_file, pdb_file, query, ref_data):
 
     # Add a description to the data that will be the json file
     out_data = {
-        "description": f"Mapping for membrane-embedded residues. Key is position number: (residue in {ref}, residue in {query} and the number of the TM helix",
+        "description": f"Mapping for membrane-embedded residues. Key is position number: residue in {ref}, residue in {query} and the number of the TM helix",
         "alignment_map": tm_map
     }
     if warnings:
