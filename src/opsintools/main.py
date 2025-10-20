@@ -17,8 +17,7 @@ MAX_SEQ_ID: Final[float] = 0.9
 METHODS: list[str] = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa' ]
 
 class OpsinToolsLoggerFormatter(logging.Formatter):
-    """
-    logger formatter class for CLIs
+    """Logger formatter class for CLIs
     """
     grey = "\x1b[38;20m"
     yellow = "\x1b[33;20m"
@@ -39,11 +38,10 @@ class OpsinToolsLoggerFormatter(logging.Formatter):
         return formatter.format(record)
 
 def read_database(data_dir: str, only_exptl: bool) -> tuple[dict, dict]:
-    """
-    checks the opsinmap3d database
+    """Checks the opsinmap3d database
 
-    :param data_dir: data directory
-    :return: tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, pdb_list (list of reps to be included always)
+    :param str data_dir: data directory
+    :returns: a tuple of ref (parsed reference data), rep_dict (dict of { rep: its pdb path }, pdb_list (list of reps to be included always)
     """
     if not path.exists(data_dir):
         raise FileExistsError(f"The data directory {data_dir} does not exist")
@@ -95,8 +93,7 @@ def opsinalign3d(
         methods: list = METHODS,
         threads: int = THREADS,
         force: bool = False) -> Tcoffee | None:
-    """
-    runs the opsinalign3d workflow
+    """Runs the opsinalign3d workflow
 
     :param query_pdbs: input PDB files
     :param output_dir: output directory path
@@ -138,8 +135,7 @@ def opsinmap3d(
         max_seq_id: float = MAX_SEQ_ID,
         only_exptl: bool = False,
         prefer_exptl: bool = False) -> dict | None:
-    """
-    runs the opsinmap3d workflow
+    """Runs the opsinmap3d workflow
 
     :param query_pdb: input PDB file
     :param output_dir: output directory path
@@ -244,6 +240,34 @@ def opsinalign3d_cli() -> None:
         threads = args.t,
         force = args.f,
     )
+
+def mustang_msa_cli():
+    from argparse import ArgumentParser
+    from sys import argv
+    from opsintools.scripts.t_coffee import run_mustang_msa
+
+    parser = ArgumentParser(description = 'A wrapper for mustang MSA to be used with t_coffee.')
+
+    parser.add_argument('-i', metavar = 'INPUT', required = True, help = 'concatenated PDB structures')
+    parser.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output file')
+
+    args = parser.parse_args()
+
+    run_mustang_msa(args.i, args.o)
+
+def mtm_align_msa_cli():
+    from argparse import ArgumentParser
+    from sys import argv
+    from opsintools.scripts.t_coffee import run_mtm_align_msa
+
+    parser = ArgumentParser(description = 'A wrapper for mTM-align MSA to be used with t_coffee.')
+
+    parser.add_argument('-i', metavar = 'INPUT', required = True, help = 'concatenated PDB structures')
+    parser.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output file')
+
+    args = parser.parse_args()
+
+    run_mtm_align_msa(args.i, args.o)
 
 def opsinmap3d_cli():
     from argparse import ArgumentParser

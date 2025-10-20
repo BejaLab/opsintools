@@ -33,6 +33,69 @@ def write_inputs(pdb_dict, fasta_file, template_file):
             pdb_file_name = Path(pdb_file).name
             templ_fh.write(f">{seq_id} _P_ {pdb_file_name}\n")
 
+def split_t_coffee_pdb_input(cat_pdb_file: os.PathLike, dir_path: os.PathLike) -> [os.PathLike]:
+    pdb_data = [[]]
+    with open(cat_pdb_file) as file:
+        for line in file:
+            if line.startswith('#TC_LINE_SEPARATOR'):
+                pdb_data.append([])
+            elif line.startswith('TARGET_SEQ_NAME:'):
+                names = line.split(':')[1].split()
+            else:
+                pdb_data[-1].append(line)
+    if not pdb_data or pdb_data[-1] or pdb_data[-2]:
+        raise ValueError(f"Expected t-coffee concatenated PDB file, got something else")
+    split_paths = []
+    for pdb, name in zip(pdb_data, names):
+        split_path = dir_path / name
+        split_paths.append(split_path.resolve())
+        with open(split_path, 'w') as out_file:
+            out_file.write(''.join(pdb))
+    return split_paths
+
+def run_mtm_align_msa(cat_pdb_file: str, output_alignment: str) -> None:
+    """Run mTM-align MSA with the input structures in the form of a concatenated PDB file
+
+    :param str cat_pdb_file: file name of the concatenated PDB
+    :param str output_alignment: file name of the output FASTA file
+    """
+    output_alignment_path = Path(output_alignment).resolve()
+    output_alignment_path.parent.mkdir(exist_ok = True)
+    cat_pdb_path = Path(cat_pdb_file).resolve()
+
+    with TemporaryDirectory() as work_dir:
+        work_path = Path(work_dir)
+        input_list_file = work_path / "_mtm_align_list_of_inputs.txt"
+        with open(input_list_file, "w") as file:
+            for pdb_path in split_t_coffee_pdb_input(cat_pdb_path, work_path):
+                file.write(f"{pdb_path}\n")
+        outdir = work_path / "_mtm_align_results"
+        cmd = [ 'mtm-align', '-i', input_list_file, '-outdir', outdir ]
+        process = subprocess.run(cmd, cwd = work_dir)
+        process.check_returncode()
+        fasta_path = outdir / "result.fasta"
+        fasta_path.rename(output_alignment_path)
+
+def run_mustang_msa(cat_pdb_file: str, output_alignment: str) -> None:
+    """Run mustang MSA with the input structures in the form of a concatenated PDB file
+
+    :param str cat_pdb_file: file name of the concatenated PDB
+    :param str output_alignment: file name of the output FASTA file
+    """
+    output_alignment_path = Path(output_alignment).resolve()
+    output_alignment_path.parent.mkdir(exist_ok = True)
+    cat_pdb_path = Path(cat_pdb_file).resolve()
+
+    with TemporaryDirectory() as work_dir:
+        work_path = Path(work_dir)
+        prefix = work_path / "_mustang_results"
+        cmd = [ 'mustang', '-F', 'fasta', '-o', prefix, '-i' ]
+        cmd += split_t_coffee_pdb_input(cat_pdb_path, work_path)
+        process = subprocess.run(cmd, cwd = work_dir)
+        process.check_returncode()
+        fasta_path = prefix.with_suffix(".afasta")
+        fasta_path.rename(output_alignment_path)
+
 def run_t_coffee(work_dir, fasta_file, template_file, output_alignment, log_file, methods, threads):
     output_alignment_real = path.realpath(output_alignment)
     log_file_real = path.realpath(log_file)
@@ -52,13 +115,66 @@ def run_t_coffee(work_dir, fasta_file, template_file, output_alignment, log_file
         process = subprocess.run(cmd, stdout = log_fh, stderr = log_fh, cwd = work_dir)
         process.check_returncode()
 
+def write_tc_method(
+        work_dir: str,
+        executable: str,
+        aln_mode: str,
+        in_flag: str = "-i",
+        out_flag: str = "-o",
+        out_mode: str = "aln",
+        seq_type: str = "P"
+    ) -> str:
+    """Writes a custom .tc_method file
+    
+    :param str executable: executable (= method)
+    :param str aln_mode:   alignment mode (multiple or pairwise)
+    :param str in_flag:    flag for the input file(s)
+    :param str out_flag:   flag for the output file
+    :param str out_mode:   output mode
+    :param str seq_type:   sequence mode (P for PDB)
+    :returns: output file name
+    :rtype: str
+    """
+    file_path = Path(work_dir) / (executable + ".tc_method")
+    cfg = {
+        'EXECUTABLE': executable,
+        'ALN_MODE': aln_mode,
+        'IN_FLAG': in_flag,
+        'OUT_FLAG': out_flag,
+        'OUT_MODE': out_mode,
+        'SEQ_TYPE': seq_type
+    }
+    with open(file_path, 'w') as file:
+        file.write("*TC_METHOD_FORMAT_01\n")
+        for key, val in cfg.items():
+            file.write(f"{key} {val}\n")
+    return str(file_path)
+
 def check_t_coffee_methods(methods):
-    ALL_METHODS = [ 'test_pair', 'fast_pair', 'exon3_pair', 'exon2_pair', 'exon_pair', 'blastr_pair', 'promo_pair', 'clean_slow_pair', 'slow_pair', 'hash_pair', 'biphasic_pair', 'proba_prfpair', 'fs_pair', 'proba_pair', 'best_pair4prot', 'best_pair4rna', 'lalign_id_pair', 'fs_lalign_id_pair', 'seq_pair', 'externprofile_pair', 'hh_pair', 'co_pair', 'cwprofile_pair', 'cdna_fast_pair', 'cdna_cfast_pair', 'old_clustalo_pair', 'mafftsparsecore_pair', 'dynamic_pair', '3dcoffee_pair', 'expresso_pair', 'accurate_pair', 'psicoffee_pair', 'clustaloNF_pair', 'clustalw2_pair', 'clustalw_pair', 'uppNF_pair', 'upp_pair', 'msa_pair', 'dca_pair', 'dialigntx_pair', 'dialignt_pair', 'poa_pair', 'msaprobs_pair', 'probcons_pair', 'probconsRNA_pair', 'muscle_pair', 'mus4_pair', 't_coffee_pair', 'pcma_pair', 'kalign_pair', 'amap_pair', 'proda_pair', 'prank_pair', 'fsa_pair', 'consan_pair', 'famsa_pair', 'align_pdbpair', 'lalign_pdbpair', 'extern_pdbpair', 'thread_pair', 'fugue_pair', 'pdb_pair', 'sap_pair', 'sara_pair', 'daliweb_pair', 'dali_pair', 'mustang_pair', 'TMalign_pair', 'ktup_msa', 'blastp_msa', 'old_clustalo_msa', 'dynamic_msa', '3dcoffee_msa', 'expresso_msa', 'accurate_msa', 'psicoffee_msa', 'famsa_msa', 'clustalo_msa', 'mafft_msa', 'mafftginsi_msa', 'mafftfftns1_msa', 'mafftfftnsi_msa', 'mafftnwnsi_msa', 'mafftsparsecore_msa', 'mafftsparsecore_msa', 'mafftlinsi_msa', 'maffteinsi_msa', 'maffteinsi_pair', 'clustaloNF_msa', 'clustalw2_msa', 'clustalw_msa', 'uppNF_msa', 'upp_msa', 'msa_msa', 'dca_msa', 'dialigntx_msa', 'dialignt_msa', 'poa_msa', 'msaprobs_msa', 'probcons_msa', 'probconsRNA_msa', 'muscle_msa', 'mus4_msa', 't_coffee_msa', 'pcma_msa', 'kalign_msa', 'amap_msa', 'proda_msa', 'fsa_msa', 'tblastx_msa', 'tblastpx_msa', 'plib_msa', 'famsa_msa' ]
+    ALL_METHODS = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa', 'mustang_msa', 'mafft_msa', 'mtm_align_msa' ]
     if not methods or not isinstance(methods, list):
         raise ValueError(f"'methods' should be a non-empty list, got {methods} instead")
     for method in methods:
         if method not in ALL_METHODS:
             raise ValueError(f"Method '{method}' is not supported")
+
+def write_custom_methods(methods: [str], work_dir: str) -> [str]:
+    """Check list of methods for custom methods, write the corresponding
+    .tc_method files and replace the method names with file names
+
+    :param [str] methods: list of the methods
+    :param str work_dir:  directory where to write the .tc_method files
+    :returns: potentially updated list of methods
+    :rtype: [str]
+    """
+    CUSTOM_METHODS = [ 'mustang_msa', 'mtm_align_msa' ]
+    methods_out = []
+    for method in methods:
+        if method in CUSTOM_METHODS:
+            aln_mode = 'multiple' if method.endswith('msa') else 'pairwise'
+            method = write_tc_method(work_dir, method, aln_mode)
+        methods_out.append(method)
+    return methods_out
 
 def t_coffee(pdb_dict, output_prefix, methods, threads):
     if len(pdb_dict) < 2:
@@ -66,7 +182,9 @@ def t_coffee(pdb_dict, output_prefix, methods, threads):
     if shutil.which("t_coffee") is None:
         raise FileNotFoundError("t_coffee not found in PATH")
     check_t_coffee_methods(methods)
+    custom_methods = [ "mustang_msa" ]
     with TemporaryDirectory() as work_dir:
+        methods = write_custom_methods(methods, work_dir)
         fasta_file = path.join(work_dir, 'sequences.fasta')
         template_file = path.join(work_dir, 'template.txt')
         for pdb_name, pdb_file in pdb_dict.items():
