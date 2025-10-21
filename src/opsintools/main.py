@@ -5,6 +5,7 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Final
 from opsintools.classes.Tcoffee import Tcoffee
+from timeit import default_timer as timer
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,7 @@ def opsinmap3d(
     from opsintools.scripts.tm_pos import tm_pos
     from multiprocessing import Pool
 
+    checking_start = timer()
     logger.info("Checking the input")
 
     check_t_coffee_methods(methods)
@@ -179,12 +181,15 @@ def opsinmap3d(
     t_coffee_aln: str = path.join(output_dir, 't_coffee.aln')
     json_output: str = path.join(output_dir, 'opsinmap.json')
 
+    alignment_to_ref_start = timer()
     logger.info("Aligning the query to the reference")
     us_align(ref['filename'], query_pdb, aln_to_ref)
 
+    trimming_start = timer()
     logger.info("Trimming the query")
     prot_trim_filter(aln_to_ref, query_pdb, ref['filename'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
+    templates_start = timer()
     chosen_templates: list = []
     if not n_templates or n_templates == 1:
         chosen_templates = [ ref['id'] ]
@@ -203,10 +208,31 @@ def opsinmap3d(
     for rep in chosen_templates:
         chosen_pdbs[rep] = rep_dict[rep]['filename']
 
+    alignment_start = timer()
     logger.info("Doing the structural alignment")
     t_coffee(chosen_pdbs, t_coffee_aln, methods = methods, threads = threads)
 
+    finishing_time = timer()
     output: dict = tm_pos(t_coffee_aln, trimmed_pdb, ref['filename'], 'query', ref)
+    output['params'] = {
+        'methods': methods,
+        'data_dir': data_dir,
+        'n_templates': n_templates,
+        'pad_n': pad_n,
+        'pad_c': pad_c,
+        'max_seq_id': max_seq_id,
+        'only_exptl': only_exptl,
+        'prefer_exptl': prefer_exptl
+    }
+    output['templates'] = chosen_templates
+    output['timer'] = {
+        'input checking': alignment_to_ref_start - checking_start,
+        'alignment to reference': trimming_start - alignment_to_ref_start,
+        'query trimming': alignment_to_ref_start - trimming_start,
+        'picking templates': alignment_start - templates_start,
+        'alignment to templates': finishing_time - alignment_start,
+        'finishing': timer() - finishing_time
+    }
 
     with open(json_output, 'w') as file:
         json.dump(output, file, indent = 2)
@@ -281,7 +307,7 @@ def opsinmap3d_cli():
     main_group.add_argument('-d', metavar = 'DATADIR', required = True, help = 'opsin data directory')
     main_group.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output directory')
     main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
-    main_group.add_argument('-n', metavar = 'N_REPS', type = int, default = THREADS, help = f'maximum number of template structures to use (default: {N_REPS})')
+    main_group.add_argument('-n', metavar = 'N_REPS', type = int, default = N_REPS, help = f'maximum number of template structures to use (default: {N_REPS})')
     main_group.add_argument('-t', metavar = 'THREADS', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
 
     adv_group = parser.add_argument_group('Advanced')
