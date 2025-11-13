@@ -37,9 +37,15 @@ See `opsinmap3d -h` or `from opsintools import opsinmap3d; help(opsinmap3d)` for
 
 ## opsinalign3d
 
-A user-friendly wrapper for running `t-coffee` on a set of PDB files and parsing the results. The output is an object of the custom class `Tcoffee`. The output directory will contain:
+A wrapper for running `t-coffee` on a set of PDB files and parsing the results. The output is an object of the custom class `Tcoffee`. The output directory will contain:
 
 * `t_coffee.aln` - structural alignment
 * `t_coffee.log` - structural alignment log
 
 See `opsinalign3d -h` or `from opsintools import opsinalign3d; help(opsinalign3d)` for more details.
+
+Currently supported methods are: `sap\_pair`, `mustang\_pair`, `t\_coffee\_msa`, `probcons\_msa`, `mustang\_msa` (method added here), `mtm\_align\_msa` (method addedhere), vmaffteinsi\_msa`, `mafftfftns1\_msa`, `mafftfftnsi\_msa`, `mafftginsi\_msa`, `mafftlinsi\_msa`, `mafft\_msa`, `mafftnwnsi\_msa`, `mafftsparsecore\_msa`
+
+## opsinpdb
+
+Fetches a PDB record or reads a local CIF or PDB file, cleans it up and saves as a PDB file. The cleanup includes renaming the atoms of `LYR` (= `LYS+RET`), removing non-covalent ligands, water molecules, hydrogens, alternative states and unwanted chains. See `opsinpdb -h`.
