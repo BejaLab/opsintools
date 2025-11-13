@@ -28,5 +28,6 @@ dependencies = [
 [project.scripts]
 opsinmap3d = "opsintools:opsinmap3d_cli"
 opsinalign3d = "opsintools:opsinalign3d_cli"
+opsinpdb = "opsintools:opsinpdb_cli"
 mustang_msa = "opsintools:mustang_msa_cli"
 mtm_align_msa = "opsintools:mtm_align_msa_cli"

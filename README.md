@@ -10,7 +10,7 @@ There are python and non-python dependencies: the most straightforward installat
 
 ## conda
 
-Use the provided environment definition: `conda env create -n opsintools -f env.yaml` and then `conda activate opsintools`.
+Use the provided environment definition: `conda env create -n opsintools -f env.yaml --channel-priority flexible` and then `conda activate opsintools`. Use `mamba` if available.
 
 ## pypi
 

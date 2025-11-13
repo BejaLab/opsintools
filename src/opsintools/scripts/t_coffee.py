@@ -76,6 +76,17 @@ def run_mtm_align_msa(cat_pdb_file: str, output_alignment: str) -> None:
         fasta_path = outdir / "result.fasta"
         fasta_path.rename(output_alignment_path)
 
+# TODO: Not ready yet, outputs a2m
+def run_learnmsa_msa(input_file: str, output_alignment: str) -> None:
+    """Run learnMSA
+
+    :param str input_file: file name of the input fasta file
+    :param str output_alignment: file name of the output FASTA file
+    """
+    cmd = [ 'learnMSA', '-i', input_file, '-o', output_alignment ]
+    process = subprocess.run(cmd)
+    process.check_returncode()
+
 def run_mustang_msa(cat_pdb_file: str, output_alignment: str) -> None:
     """Run mustang MSA with the input structures in the form of a concatenated PDB file
 
@@ -151,7 +162,7 @@ def write_tc_method(
     return str(file_path)
 
 def check_t_coffee_methods(methods):
-    ALL_METHODS = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa', 'mustang_msa', 'mafft_msa', 'mtm_align_msa' ]
+    ALL_METHODS = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa', 'mustang_msa', 'mtm_align_msa', 'maffteinsi_msa', 'mafftfftns1_msa', 'mafftfftnsi_msa', 'mafftginsi_msa', 'mafftlinsi_msa', 'mafft_msa', 'mafftnwnsi_msa', 'mafftsparsecore_msa' ]
     if not methods or not isinstance(methods, list):
         raise ValueError(f"'methods' should be a non-empty list, got {methods} instead")
     for method in methods:
@@ -167,12 +178,13 @@ def write_custom_methods(methods: [str], work_dir: str) -> [str]:
     :returns: potentially updated list of methods
     :rtype: [str]
     """
-    CUSTOM_METHODS = [ 'mustang_msa', 'mtm_align_msa' ]
+    CUSTOM_METHODS = { 'mustang_msa': 'P', 'mtm_align_msa': 'P', 'learnmsa_msa': 'S' }
     methods_out = []
     for method in methods:
         if method in CUSTOM_METHODS:
             aln_mode = 'multiple' if method.endswith('msa') else 'pairwise'
-            method = write_tc_method(work_dir, method, aln_mode)
+            seq_type = CUSTOM_METHODS[method]
+            method = write_tc_method(work_dir, method, aln_mode, seq_type)
         methods_out.append(method)
     return methods_out
 
