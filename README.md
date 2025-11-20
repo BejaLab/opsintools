@@ -44,7 +44,7 @@ A wrapper for running `t-coffee` on a set of PDB files and parsing the results. 
 
 See `opsinalign3d -h` or `from opsintools import opsinalign3d; help(opsinalign3d)` for more details.
 
-Currently supported methods are: `sap\_pair`, `mustang\_pair`, `t\_coffee\_msa`, `probcons\_msa`, `mustang\_msa` (method added here), `mtm\_align\_msa` (method addedhere), vmaffteinsi\_msa`, `mafftfftns1\_msa`, `mafftfftnsi\_msa`, `mafftginsi\_msa`, `mafftlinsi\_msa`, `mafft\_msa`, `mafftnwnsi\_msa`, `mafftsparsecore\_msa`
+Currently supported methods are: `sap_pair`, `mustang_pair`, `t_coffee_msa`, `probcons_msa`, `mustang_msa` (method added here), `mtm_align_msa` (method added here), `vmaffteinsi_msa`, `mafftfftns1_msa`, `mafftfftnsi_msa`, `mafftginsi_msa`, `mafftlinsi_msa`, `mafft_msa`, `mafftnwnsi_msa`, `mafftsparsecore_msa`.
 
 ## opsinpdb
 
