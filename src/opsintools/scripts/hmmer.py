@@ -66,136 +66,11 @@ def sync_pwas(ref1, seq1, pp1, ref2, seq2, pp2):
     aln2 = AlignIO.read(StringIO(fasta2), "fasta").alignment
     return Alignment.from_alignments_with_same_reference([aln1, aln2])
 
-def chain_local_alignments_bak(
-    query_seq: str,
-    ref_seq: str,
-    alignments: list[dict[str, Any]],
-    max_gap: int = 100
-) -> list[dict[str, Any]]:
-    class Align:
-        def __init__(self, data: dict[str, Any]):
-            q = data['ali']
-            r = data['hmm']
-            self.q_from = q['from']
-            self.q_to = q['to']
-            self.q_seq = q['seq']
-            self.q_aligned_len = len(q['seq'])
-            self.r_from = r['from']
-            self.r_to = r['to']
-            self.r_seq = r['seq']
-            self.scores = data['PP']
-            self.length = len(self.scores)
-            self.r_res_count = sum(1 for c in self.r_seq if c not in '-.')
-            self.r_end = self.r_from + self.r_res_count - 1
-
-    blocks = [Align(a) for a in alignments]
-    if not blocks:
-        return []
-
-    # Remove contained lower-score alignments (contained on reference)
-    n = len(blocks)
-    sorted_by_score = sorted(range(n), key=lambda i: blocks[i].length, reverse=True)
-    keep = [True] * n
-    for i in sorted_by_score:
-        if not keep[i]: continue
-        bi = blocks[i]
-        for j in range(n):
-            if i == j or not keep[j]: continue
-            bj = blocks[j]
-            if (bi.r_from <= bj.r_from and bj.r_end <= bi.r_end):
-                keep[j] = False
-
-    blocks = [blocks[i] for i in range(n) if keep[i]]
-
-    blocks.sort(key=lambda b: b.q_from)
-    n = len(blocks)
-    dp = [0.0] * n
-    prev = [-1] * n
-    for i in range(n):
-        dp[i] = blocks[i].q_aligned_len
-        for j in range(i):
-            gap_q = blocks[i].q_from - blocks[j].q_to - 1
-            gap_r = blocks[i].r_from - blocks[j].r_end - 1
-            gap = max(gap_q, gap_r)
-            if gap <= max_gap:
-                candidate = dp[j] + blocks[i].q_aligned_len
-                if candidate > dp[i]:
-                    dp[i] = candidate
-                    prev[i] = j
-
-    # Extract all maximal chains greedily
-    used = [False] * n
-    results = []
-    while True:
-        best_i = -1
-        best_score = -float('inf')
-        for i in range(n):
-            if not used[i] and dp[i] > best_score:
-                best_score = dp[i]
-                best_i = i
-        if best_i == -1:
-            break
-        chain = []
-        i = best_i
-        while i != -1:
-            chain.append(i)
-            used[i] = True
-            i = prev[i]
-        chain.reverse()
-        chain_blocks = [blocks[k] for k in chain]
-
-        merged_q_parts = [chain_blocks[0].q_seq]
-        merged_r_parts = [chain_blocks[0].r_seq]
-        merged_s_parts = [chain_blocks[0].scores]
-
-        for i in range(1, len(chain_blocks)):
-            prev_b = chain_blocks[i - 1]
-            b = chain_blocks[i]
-
-            gap_q = b.q_from - prev_b.q_to - 1
-            gap_r = b.r_from - prev_b.r_end - 1
-
-            if gap_r < 0:
-                overlap = -gap_r
-                b.r_seq = ('-' * overlap) + b.r_seq[overlap:]
-                b.scores = ('.' * overlap) + b.scores[overlap:]
-
-            gap_len = max(gap_q, gap_r, 0)
-            if gap_len > 0:
-                q_gap = query_seq[prev_b.q_to : prev_b.q_to + gap_q].lower()
-                r_gap = ref_seq[prev_b.r_end : prev_b.r_end + gap_r].lower()
-                q_pad = '-' * (gap_len - len(q_gap))
-                r_pad = '-' * (gap_len - len(r_gap))
-                merged_q_parts.append(q_gap + q_pad)
-                merged_r_parts.append(r_gap + r_pad)
-                merged_s_parts.append('.' * gap_len)
-
-            merged_q_parts.append(b.q_seq)
-            merged_r_parts.append(b.r_seq)
-            merged_s_parts.append(b.scores)
-
-        merged_q = ''.join(merged_q_parts)
-        merged_r = ''.join(merged_r_parts)
-        merged_s = ''.join(merged_s_parts)
-
-        first = chain_blocks[0]
-        last = chain_blocks[-1]
-        results.append({
-            'ali': {'seq': merged_q, 'from': first.q_from, 'to': last.q_to},
-            'hmm': {'seq': merged_r, 'from': first.r_from, 'to': last.r_end},
-            'PP': merged_s,
-            'components': len(chain_blocks)
-        })
-
-    results.sort(key=lambda x: x['ali']['from'])
-    for i, res in enumerate(results):
-        res['num'] = i+1
-    return results
-
 def chain_local_alignments(
     query_seq: str,
     ref_seq: str,
     alignments: list[dict[str, Any]],
+    min_gap: int = -20,
     max_gap: int = 100
 ) -> list[dict[str, Any]]:
     class Align:
@@ -209,9 +84,14 @@ def chain_local_alignments(
             self.r_from = r['from']
             self.r_to = r['to']
             self.r_seq = r['seq']
-            self.scores = data['PP']
-            self.length = len(self.scores)
-            # Count actual residues (not gaps/dashes) in the HMM sequence
+            self.pp_scores = data['PP']  # Posterior probabilities string
+            self.length = len(self.pp_scores)
+            
+            # Metadata for the domain
+            self.score = data.get('score', 0.0)
+            self.c_evalue = data.get('c_evalue', 1.0)
+            self.i_evalue = data.get('i_evalue', 1.0)
+            
             self.r_res_count = sum(1 for c in self.r_seq if c not in '-.')
             self.r_end = self.r_from + self.r_res_count - 1
 
@@ -234,18 +114,19 @@ def chain_local_alignments(
 
     blocks = [blocks[i] for i in range(n) if keep[i]]
     blocks.sort(key=lambda b: b.q_from)
-
-    # 2. Dynamic Programming: Find the best chain
+    
+    # 2. Dynamic Programming with Collinearity Check
     n = len(blocks)
     dp = [0.0] * n
     prev = [-1] * n
+
     for i in range(n):
         dp[i] = blocks[i].q_aligned_len
         for j in range(i):
             gap_q = blocks[i].q_from - blocks[j].q_to - 1
             gap_r = blocks[i].r_from - blocks[j].r_end - 1
-            gap = max(gap_q, gap_r)
-            if gap <= max_gap:
+            
+            if gap_r >= min_gap and gap_q <= max_gap and gap_r <= max_gap:
                 candidate = dp[j] + blocks[i].q_aligned_len
                 if candidate > dp[i]:
                     dp[i] = candidate
@@ -263,7 +144,7 @@ def chain_local_alignments(
                 best_i = i
         if best_i == -1:
             break
-
+            
         chain = []
         curr = best_i
         while curr != -1:
@@ -273,10 +154,15 @@ def chain_local_alignments(
         chain.reverse()
         chain_blocks = [blocks[k] for k in chain]
 
-        # 4. Merging Logic
+        # 4. Merging Logic and Metadata Collection
         merged_q_parts = [chain_blocks[0].q_seq]
         merged_r_parts = [chain_blocks[0].r_seq]
-        merged_s_parts = [chain_blocks[0].scores]
+        merged_pp_parts = [chain_blocks[0].pp_scores]
+        
+        # Lists for the requested metrics
+        chain_scores = [b.score for b in chain_blocks]
+        chain_c_evals = [b.c_evalue for b in chain_blocks]
+        chain_i_evals = [b.i_evalue for b in chain_blocks]
 
         for i in range(1, len(chain_blocks)):
             prev_b = chain_blocks[i - 1]
@@ -285,48 +171,42 @@ def chain_local_alignments(
             gap_q = b.q_from - prev_b.q_to - 1
             gap_r = b.r_from - prev_b.r_end - 1
 
-            # FIX: Handle reference overlap by stripping residues
             if gap_r < 0:
                 overlap_residues = -gap_r
                 chars_to_strip = 0
                 res_found = 0
-                # Find how many characters in the alignment string equal the overlap
                 for char in b.r_seq:
                     chars_to_strip += 1
                     if char not in '-.':
                         res_found += 1
                     if res_found == overlap_residues:
                         break
-
-                # Truncate the overlapping start of the current block
+                
                 b.r_seq = b.r_seq[chars_to_strip:]
                 b.q_seq = b.q_seq[chars_to_strip:]
-                b.scores = b.scores[chars_to_strip:]
-                gap_r = 0 # Coordinate gap is now resolved
+                b.pp_scores = b.pp_scores[chars_to_strip:]
+                gap_r = 0 
 
             gap_len = max(gap_q, gap_r, 0)
             if gap_len > 0:
-                # Fill gaps with lowercase sequence from original query/ref
                 q_gap_seq = query_seq[prev_b.q_to : prev_b.q_to + max(0, gap_q)].lower()
                 r_gap_seq = ref_seq[prev_b.r_end : prev_b.r_end + max(0, gap_r)].lower()
-
-                # Pad to ensure q_gap and r_gap parts have same length
-                q_pad = '-' * (gap_len - len(q_gap_seq))
-                r_pad = '-' * (gap_len - len(r_gap_seq))
-
-                merged_q_parts.append(q_gap_seq + q_pad)
-                merged_r_parts.append(r_gap_seq + r_pad)
-                merged_s_parts.append('.' * gap_len)
+                merged_q_parts.append(q_gap_seq + '-' * (gap_len - len(q_gap_seq)))
+                merged_r_parts.append(r_gap_seq + '-' * (gap_len - len(r_gap_seq)))
+                merged_pp_parts.append('.' * gap_len)
 
             merged_q_parts.append(b.q_seq)
             merged_r_parts.append(b.r_seq)
-            merged_s_parts.append(b.scores)
+            merged_pp_parts.append(b.pp_scores)
 
         results.append({
             'ali': {'seq': ''.join(merged_q_parts), 'from': chain_blocks[0].q_from, 'to': chain_blocks[-1].q_to},
             'hmm': {'seq': ''.join(merged_r_parts), 'from': chain_blocks[0].r_from, 'to': chain_blocks[-1].r_end},
-            'PP': ''.join(merged_s_parts),
-            'components': len(chain_blocks)
+            'PP': ''.join(merged_pp_parts),
+            'components': len(chain_blocks),
+            'score': chain_scores,
+            'c_evalue': chain_c_evals,
+            'i_evalue': chain_i_evals
         })
 
     results.sort(key=lambda x: x['ali']['from'])

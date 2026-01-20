@@ -3,12 +3,18 @@ from pathlib import Path
 from typing import Final
 
 logger = logging.getLogger(__name__)
+
 PAD_N: Final[int]= 30
 PAD_C: Final[int] = 30
+
 THREADS: Final[int] = 1
 N_REPS: Final[int] = 20
 MAX_SEQ_ID: Final[float] = 0.9
 METHODS: list[str] = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa' ]
+
+HMM_MIN_GAP: Final[int] = -20
+HMM_MAX_GAP: Final[int] = 100
+HMM_MIN_SCORE: Final[int] = 15
 
 class OpsinToolsLoggerFormatter(logging.Formatter):
     """Logger formatter class for CLIs

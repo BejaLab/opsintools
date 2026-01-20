@@ -37,14 +37,26 @@ See `opsinmap3d -h` or `from opsintools import opsinmap3d; help(opsinmap3d)` for
 
 ## opsinalign3d
 
-A wrapper for running `t-coffee` on a set of PDB files and parsing the results. The output is an object of the custom class `Tcoffee`. The output directory will contain:
+Runs `t-coffee` on a set of PDB files and parses the results. The output is an object of the custom class `Tcoffee`. The output directory will contain:
 
 * `t_coffee.aln` - structural alignment
 * `t_coffee.log` - structural alignment log
 
 See `opsinalign3d -h` or `from opsintools import opsinalign3d; help(opsinalign3d)` for more details.
 
-Currently supported methods are: `sap_pair`, `mustang_pair`, `t_coffee_msa`, `probcons_msa`, `mustang_msa` (method added here), `mtm_align_msa` (method added here), `vmaffteinsi_msa`, `mafftfftns1_msa`, `mafftfftnsi_msa`, `mafftginsi_msa`, `mafftlinsi_msa`, `mafft_msa`, `mafftnwnsi_msa`, `mafftsparsecore_msa`.
+Currently supported methods are: `sap_pair`, `mustang_pair`, `t_coffee_msa`, `probcons_msa`, `vmaffteinsi_msa`, `mafftfftns1_msa`, `mafftfftnsi_msa`, `mafftginsi_msa`, `mafftlinsi_msa`, `mafft_msa`, `mafftnwnsi_msa`, `mafftsparsecore_msa` and two methods implemented here: `mustang_msa`, `mtm_align_msa`.
+
+## opsinmaphmm
+
+Opsin homology based on protein profiles. The input is a fasta file with multiple opsin sequences and a set of reference dataset from [opsintools-build](https://github.com/BejaLab/opsintools-build/releases). The output is the mapping between positions in the queries and the positions in the reference. For each query the best-fitting dataset is chosen. Both the CLI and the API generate output files located in the specified directory:
+
+* `{dataset}/hmmsearch.txt` - raw `hmmsearch` output for each reference dataset
+* `trimmed.pdb` - trimmed query structure
+* `opsinmap.json` - json file with the position mapping
+
+The API function `opsinmaphmm` returns the dictionary mapping reference positions to the query positions as its output.
+
+See `opsinmaphmm -h` or `from opsintools import opsinmaphmm; help(opsinmaphmm)` for more details.
 
 ## opsinpdb
 

@@ -1,5 +1,5 @@
 from .globals import run_with_logger, logger, create_output_dir, read_database
-from .globals import N_REPS, METHODS, THREADS, PAD_N, PAD_C, MAX_SEQ_ID
+from .globals import N_REPS, METHODS, THREADS, PAD_N, PAD_C, MAX_SEQ_ID, HMM_MIN_GAP, HMM_MAX_GAP, HMM_MIN_SCORE
 from opsintools.classes.Hmmer import Hmmer, HmmerContainer
 from pathlib import Path
 from timeit import default_timer as timer
@@ -166,8 +166,12 @@ def opsinmap3d_cli():
 def opsinmaphmm(
         query_fasta: str,
         output_dir: str,
-        data_dirs: list | None,
-        profile_files: list | None,
+        data_dirs: list,
+        pad_n: int = PAD_N,
+        pad_c: int = PAD_C,
+        min_gap: int = HMM_MIN_GAP,
+        max_gap: int = HMM_MAX_GAP,
+        min_score: float = HMM_MIN_SCORE,
         threads: int = THREADS,
         force: bool = False) -> dict | None:
     """Runs the opsinhmm workflow
@@ -175,11 +179,14 @@ def opsinmaphmm(
     :param query_fasta: input (multi)fasta file
     :param output_dir: output directory path
     :param data_dirs: list of database directories
+    :param pad_n: pad this number of residues to N-terminus when trimming the queries
+    :param pad_c: pad this number of residues to C-terminus when trimming the queries
     :param threads: number of threads
     :param force: whether to overwrite data in the output directory if exists
     """
     from collections import defaultdict
     from Bio import SeqIO
+    from Bio.SeqRecord import SeqRecord
     import json
     from opsintools.scripts.prot_trim_filter import prot_trim_filter
     from opsintools.scripts.us_align import us_align
@@ -191,9 +198,6 @@ def opsinmaphmm(
 
     if not Path(query_fasta).is_file():
         raise FileNotFoundError(f"Input file {query_fasta} not found or not a file")
-
-    if not data_dirs and not profile_files or data_dirs and profile_files:
-        raise ValueError("Must specify either data directories or profiles")
 
     databases = {}
 
@@ -223,6 +227,7 @@ def opsinmaphmm(
     output_path = Path(output_dir)
     create_output_dir(output_dir, force)
     json_output = output_path / 'opsinmap.json'
+    trimmed_fasta = output_path / 'trimmed.fasta'
 
     hmmsearch_start = timer()
     logger.info("Doing the searches")
@@ -236,55 +241,77 @@ def opsinmaphmm(
         hmmers += Hmmer(profile_path, profile_cons, search = output_file)
 
     hmmers.resolve()
-    hmmers.chain_domains(records)
+    hmmers.chain_domains(records, min_gap = min_gap, max_gap = max_gap)
 
     logger.info("hmmsearch finished")
 
     output = []
+    trimmed_records = []
     for match in hmmers.matches:
         profile_file = match["profile_file"]
         profile_name = Path(profile_file).parent.stem
         database = databases[profile_name]
         ref_dom = database['ref_domain']
+        profile_cons = database['profile_cons']
+        profile_len = len(profile_cons)
         seq_name = match["seq_name"]
-        dom_of = len(match['domains'])
+        record = records[seq_name]
+        has_domains = False
         for dom in match['domains']:
-            dom = local_to_global(dom, database['profile_cons'], records[seq_name].seq)
-            hmm_seq, ref_seq, ref_pp, query_seq, query_pp = sync_pwas(ref_dom['hmm']['seq'], ref_dom['ali']['seq'], ref_dom['PP'], dom['hmm']['seq'], dom['ali']['seq'], dom['PP'])
-            hmm_pos = ref_pos = query_pos = 0
-            aln_map = []
-            for hmm_res, ref_res, ref_pp_res, query_res, query_pp_res in zip(hmm_seq, ref_seq, ref_pp, query_seq, query_pp):
-                hmm_not_gap = hmm_res != '-'
-                ref_not_gap = ref_res != '-'
-                query_not_gap = query_res != '-'
-                hmm_pos += hmm_not_gap
-                ref_pos += ref_not_gap
-                query_pos += query_not_gap
-                if hmm_not_gap and ref_not_gap and query_not_gap:
-                    aln_map.append({
-                        "ref_pos": ref_pos, "query_pos": query_pos, "hmm_pos": hmm_pos,
-                        "ref_res": ref_res, "query_res": query_res, "hmm_res": hmm_res,
-                        "ref_score": Hmmer.decode_prob(ref_pp_res), "query_score": Hmmer.decode_prob(query_pp_res),
-                        "TM": database['ref_tms'][ref_pos] if ref_pos in database['ref_tms'] else '-'
-                    })
-            dom_num = dom['num']
-            output.append({
-                "profile": profile_name,
-                "query": seq_name,
-                "ref": database['ref_id'],
-                "map": aln_map,
-                "domain": f"{dom_num}/{dom_of}",
-                "alignment": {
-                    "query": query_seq,
-                    "ref": ref_seq,
-                    "query_score": query_pp,
-                    "ref_score": ref_pp,
-                    "hmm_consensus": hmm_seq
-                }
-            })
-
+            dom_score = sum(dom['score']) if isinstance(dom['score'], list) else dom['score'][0]
+            if dom_score >= min_score:
+                has_domains = True
+                dom = local_to_global(dom, profile_cons, record.seq)
+                hmm_seq, ref_seq, ref_pp, query_seq, query_pp = sync_pwas(ref_dom['hmm']['seq'], ref_dom['ali']['seq'], ref_dom['PP'], dom['hmm']['seq'], dom['ali']['seq'], dom['PP'])
+                hmm_pos = ref_pos = query_pos = 0
+                aln_map = []
+                first_hmm_pos = first_query_pos = None
+                last_hmm_pos  = last_query_pos = None
+                for hmm_res, ref_res, ref_pp_res, query_res, query_pp_res in zip(hmm_seq, ref_seq, ref_pp, query_seq, query_pp):
+                    hmm_not_gap = hmm_res != '-'
+                    ref_not_gap = ref_res != '-'
+                    query_not_gap = query_res != '-'
+                    hmm_pos += hmm_not_gap
+                    ref_pos += ref_not_gap
+                    query_pos += query_not_gap
+                    if hmm_not_gap and query_not_gap:
+                        if first_hmm_pos is None:
+                            first_hmm_pos, first_query_pos = hmm_pos, query_pos
+                        else:
+                            last_hmm_pos, last_query_pos = hmm_pos, query_pos
+                        if ref_not_gap:
+                            aln_map.append({
+                                "ref_pos": ref_pos, "query_pos": query_pos, "hmm_pos": hmm_pos,
+                                "ref_res": ref_res, "query_res": query_res, "hmm_res": hmm_res,
+                                "ref_score": Hmmer.decode_prob(ref_pp_res), "query_score": Hmmer.decode_prob(query_pp_res),
+                                "TM": database['ref_tms'][ref_pos] if ref_pos in database['ref_tms'] else '-'
+                            })
+                dom_num = dom['num']
+                output.append({
+                    "profile": profile_name,
+                    "query": seq_name,
+                    "ref": database['ref_id'],
+                    "map": aln_map,
+                    "domain": dom_num,
+                    "alignment": {
+                        "query": query_seq,
+                        "ref": ref_seq,
+                        "query_score": query_pp,
+                        "ref_score": ref_pp,
+                        "hmm_consensus": hmm_seq
+                    }
+                })
+                trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
+                trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
+                trimmed_seq = record.seq[trim_start:first_query_pos-1].lower() + record.seq[first_query_pos-1:last_query_pos].upper() + record.seq[last_query_pos:trim_end].lower()
+                trimmed_rec = SeqRecord(trimmed_seq, id = f"{seq_name}/{trim_start+1}:{trim_end}", description = record.description)
+                trimmed_records.append(trimmed_rec)
+        if not has_domains:
+            logger.warning(f"No domains found in {seq_name}")
     with open(json_output, 'w') as file:
         json.dump(output, file, indent = 2)
+    with open(trimmed_fasta, 'w') as file:
+        SeqIO.write(trimmed_records, file, "fasta")
     logger.info("Finished") 
     return output
 
@@ -298,20 +325,27 @@ def opsinmaphmm_cli():
 
     main_group.add_argument('-i', metavar = 'INPUT', required = True, help = 'query sequences in fasta format')
     main_group.add_argument('-d', metavar = 'DATADIR', nargs='+', help = 'opsin data directories')
-    main_group.add_argument('-p', metavar = 'PROFILE', nargs='+', help = 'HMM profile(s)')
     main_group.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output directory')
+    main_group.add_argument('--pad-n', default = PAD_N, type = int, help = f'N-terminal padding for query trimming (default: {PAD_N})')
+    main_group.add_argument('--pad-c', default = PAD_C, type = int, help = f'C-terminal padding for query trimming (default: {PAD_C})')
+    main_group.add_argument('--min-gap', default = HMM_MIN_GAP, type = int, help = f'Minimum gap for chaining (default: {HMM_MIN_GAP})')
+    main_group.add_argument('--max-gap', default = HMM_MAX_GAP, type = int, help = f'Maximum gap for chaining (default: {HMM_MAX_GAP})')
+    main_group.add_argument('--min-score', default = HMM_MIN_SCORE, type = float, help = f'Minimum score (default: {HMM_MIN_SCORE})')
     main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
     main_group.add_argument('-t', metavar = 'THREADS', type = int, default = THREADS, help = f'number of threads to use (default: {THREADS})')
-    # main_group.add_argument('--debug', action = 'store_true', help = 'debugging mode')
 
     args = parser.parse_args()
 
-    #run_with_logger(opsinmaphmm,
-    opsinmaphmm(
+    run_with_logger(opsinmaphmm,
+    # opsinmaphmm(
         query_fasta = args.i,
         output_dir = args.o,
         data_dirs = args.d,
-        profile_files = args.p,
+        pad_n = args.pad_n,
+        pad_c = args.pad_c,
+        min_gap = args.min_gap,
+        max_gap = args.max_gap,
+        min_score = args.min_score,
         threads = args.t,
         force = args.f
     )
