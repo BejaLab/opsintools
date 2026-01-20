@@ -337,7 +337,6 @@ def opsinmaphmm_cli():
     args = parser.parse_args()
 
     run_with_logger(opsinmaphmm,
-    # opsinmaphmm(
         query_fasta = args.i,
         output_dir = args.o,
         data_dirs = args.d,

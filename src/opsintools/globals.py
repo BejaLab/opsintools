@@ -16,6 +16,8 @@ HMM_MIN_GAP: Final[int] = -20
 HMM_MAX_GAP: Final[int] = 100
 HMM_MIN_SCORE: Final[int] = 15
 
+BUILD_REPO = 'BejaLab/opsintools-build'
+
 class OpsinToolsLoggerFormatter(logging.Formatter):
     """Logger formatter class for CLIs
     """

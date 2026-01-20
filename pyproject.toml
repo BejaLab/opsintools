@@ -26,6 +26,7 @@ dependencies = [
 "Bug Tracker" = "https://github.com/BejaLab/opsintools/issues"
 
 [project.scripts]
+opsindata = "opsintools:opsindata_cli"
 opsinmap3d = "opsintools:opsinmap3d_cli"
 opsinalign3d = "opsintools:opsinalign3d_cli"
 opsinpdb = "opsintools:opsinpdb_cli"
