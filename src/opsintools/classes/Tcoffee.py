@@ -1,9 +1,10 @@
 from Bio import SeqIO, AlignIO
-from os import path
+from os import PathLike
+from pathlib import Path
 
 class Tcoffee():
     @staticmethod
-    def parse_scores(scores_file: str) -> tuple[int, dict, dict, str]:
+    def parse_scores(scores_file: PathLike) -> tuple[int, dict, dict, str]:
         aln_score: int = -1
         seq_scores: dict[str, int] = {}
         res_scores: dict[str, str] = {}
@@ -39,13 +40,13 @@ class Tcoffee():
                         res_scores[seq_name] += parts[1]
         return aln_score, seq_scores, res_scores, cons_scores
 
-    def __init__(self, aln_file: str):
+    def __init__(self, aln_file: PathLike):
         self.aln_file = aln_file
-        self.scores_file: str = aln_file + '.score_ascii'
+        self.scores_file: str = str(aln_file) + '.score_ascii'
         self.aln_score: int = -1
         self.seq_scores: dict[str, int] = {}
         self.res_scores: dict[str, str] = {}
         self.cons_scores: str
-        if path.isfile(self.scores_file):
+        if Path(self.scores_file).is_file():
             self.aln_score, self.seq_scores, self.res_scores, self.cons_scores = Tcoffee.parse_scores(self.scores_file)
         self.alignment = SeqIO.to_dict(AlignIO.read(aln_file, "clustal"))

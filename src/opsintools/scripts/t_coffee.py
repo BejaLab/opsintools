@@ -1,7 +1,6 @@
 from tempfile import TemporaryDirectory
 import subprocess
 import shutil
-from os import path
 import os
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -15,10 +14,13 @@ warnings.filterwarnings('ignore', message = ".*(can't determine PDB ID|Ignoring 
 NAME_MAX_LEN = 20
 
 def check_pdb_file(pdb_name, pdb_file):
-    if not path.exists(pdb_file):
+    pdb_path = Path(pdb_file)
+    if not pdb_path.exists():
         raise FileNotFoundError(f"File '{pdb_file}' does not exist")
-    if re.search('[^\w.+-]', pdb_name):
-        raise ValueError(f"Name '{pdb_name}' contains characters [^\w.+-]")
+    if not pdb_path.is_file():
+        raise FileNotFoundError(f"'{pdb_file}' is not a file")
+    if re.search(r'[^\w.+-]', pdb_name):
+        raise ValueError(f"Name '{pdb_name}' contains characters [^\\w.+-]")
     if len(pdb_name) >= NAME_MAX_LEN:
         raise ValueError(f"Name '{pdb_name}' too long, shorten it to {NAME_MAX_LEN} characters")
     if pdb_name == 'cons':
@@ -28,7 +30,8 @@ def check_pdb_file(pdb_name, pdb_file):
 def write_inputs(pdb_dict, fasta_file, template_file):
     with open(fasta_file, 'w') as fasta_fh, open(template_file, 'w') as templ_fh:
         for seq_id, pdb_file in pdb_dict.items():
-            record = utils.get_pdb_record(pdb_file, seq_id)
+            record, start, stop = utils.get_pdb_record(pdb_file, seq_id)
+            record.seq = record.seq[start:stop]
             SeqIO.write(record, fasta_fh, "fasta")
             pdb_file_name = Path(pdb_file).name
             templ_fh.write(f">{seq_id} _P_ {pdb_file_name}\n")
@@ -108,8 +111,8 @@ def run_mustang_msa(cat_pdb_file: str, output_alignment: str) -> None:
         fasta_path.rename(output_alignment_path)
 
 def run_t_coffee(work_dir, fasta_file, template_file, output_alignment, log_file, methods, threads):
-    output_alignment_real = path.realpath(output_alignment)
-    log_file_real = path.realpath(log_file)
+    output_alignment_real = Path(output_alignment).resolve()
+    log_file_real = Path(log_file).resolve()
     args = {
         'outfile': output_alignment_real,
         'output': 'aln,score_ascii',
@@ -196,15 +199,16 @@ def t_coffee(pdb_dict, output_prefix, methods, threads):
     check_t_coffee_methods(methods)
     custom_methods = [ "mustang_msa" ]
     with TemporaryDirectory() as work_dir:
+        work_path = Path(work_dir)
         methods = write_custom_methods(methods, work_dir)
-        fasta_file = path.join(work_dir, 'sequences.fasta')
-        template_file = path.join(work_dir, 'template.txt')
+        fasta_file = work_path / 'sequences.fasta'
+        template_file = work_path / 'template.txt'
         for pdb_name, pdb_file in pdb_dict.items():
             check_pdb_file(pdb_name, pdb_file)
-            source = path.realpath(pdb_file)
-            dest = path.join(work_dir, Path(pdb_file).name)
-            os.symlink(source, dest)
+            source_file = Path(pdb_file).resolve()
+            dest = work_path / source_file.name
+            os.symlink(source_file, dest)
 
-        log_file = output_prefix + '.log'
+        log_file = str(output_prefix) + '.log'
         write_inputs(pdb_dict, fasta_file, template_file)
         run_t_coffee(work_dir, fasta_file, template_file, output_prefix, log_file, methods, threads)
