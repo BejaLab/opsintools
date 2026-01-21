@@ -295,7 +295,7 @@ def opsinmaphmm(
                 output.append({
                     "profile": profile_name,
                     "query": seq_name,
-                    "trimed": trimmed_name,
+                    "trimmed": trimmed_name,
                     "ref": database['ref_id'],
                     "domain": dom['num'],
                     "alignment": {
