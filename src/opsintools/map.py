@@ -286,26 +286,27 @@ def opsinmaphmm(
                                 "ref_score": Hmmer.decode_prob(ref_pp_res), "query_score": Hmmer.decode_prob(query_pp_res),
                                 "TM": database['ref_tms'][ref_pos] if ref_pos in database['ref_tms'] else '-'
                             })
-                dom_num = dom['num']
+                trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
+                trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
+                trimmed_name = f"{seq_name}/{trim_start+1}-{trim_end}"
+                trimmed_seq = query_seq.replace('-', '')[trim_start:trim_end]
+                trimmed_rec = SeqRecord(Seq(trimmed_seq), id = trimmed_name, description = record.description)
+                trimmed_records.append(trimmed_rec)
                 output.append({
                     "profile": profile_name,
                     "query": seq_name,
+                    "trimed": trimmed_name,
                     "ref": database['ref_id'],
-                    "map": aln_map,
-                    "domain": dom_num,
+                    "domain": dom['num'],
                     "alignment": {
                         "query": query_seq,
                         "ref": ref_seq,
                         "query_score": query_pp,
                         "ref_score": ref_pp,
                         "hmm_consensus": hmm_seq
-                    }
+                    },
+                    "map": aln_map
                 })
-                trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
-                trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
-                trimmed_seq = query_seq.replace('-', '')[trim_start:trim_end]
-                trimmed_rec = SeqRecord(Seq(trimmed_seq), id = f"{seq_name}/{trim_start+1}-{trim_end}", description = record.description)
-                trimmed_records.append(trimmed_rec)
         if not has_domains:
             logger.warning(f"No domains found in {seq_name}")
     with open(json_output, 'w') as file:
