@@ -276,7 +276,7 @@ class Hmmer:
             return "."
         raise ValueError(f"Unrecognized posterior probability value {pp_val}")
 
-    def chain_domains(self, records, min_gap, max_gap):
+    def chain_domains(self, records, max_gap):
         for match in self.matches:
             seq_name = match["seq_name"]
             if seq_name not in records:
@@ -284,7 +284,7 @@ class Hmmer:
             record = records[seq_name]
             profile_cons = match["profile_cons"]
             domains = match["domains"]
-            merged = hmmer.chain_local_alignments(str(record.seq), profile_cons, domains, min_gap = min_gap, max_gap = max_gap)
+            merged = hmmer.chain_local_alignments(str(record.seq), profile_cons, domains, max_gap = max_gap)
             match['domains'] = merged
 
 class HmmerContainer(Hmmer):

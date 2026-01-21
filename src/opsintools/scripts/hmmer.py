@@ -70,146 +70,139 @@ def chain_local_alignments(
     query_seq: str,
     ref_seq: str,
     alignments: list[dict[str, Any]],
-    min_gap: int = -20,
-    max_gap: int = 100
+    max_gap: int = 150
 ) -> list[dict[str, Any]]:
     class Align:
         def __init__(self, data: dict[str, Any]):
-            q = data['ali']
-            r = data['hmm']
-            self.q_from = q['from']
-            self.q_to = q['to']
-            self.q_seq = q['seq']
-            self.q_aligned_len = len(q['seq'])
-            self.r_from = r['from']
-            self.r_to = r['to']
-            self.r_seq = r['seq']
-            self.pp_scores = data['PP']  # Posterior probabilities string
-            self.length = len(self.pp_scores)
-            
-            # Metadata for the domain
+            q, r = data['ali'], data['hmm']
+            self.q_from, self.q_to, self.q_seq = q['from'], q['to'], q['seq']
+            self.r_from, self.r_to, self.r_seq = r['from'], r['to'], r['seq']
+            self.pp_scores = data['PP']
             self.score = data.get('score', 0.0)
             self.c_evalue = data.get('c_evalue', 1.0)
             self.i_evalue = data.get('i_evalue', 1.0)
+            self.r_end = self.r_from + sum(1 for c in self.r_seq if c not in '-.') - 1
+
+        def truncate_end_to_query(self, target_q_to: int):
+            """Truncates the block so it ends at exactly target_q_to residue."""
+            if target_q_to >= self.q_to: return
+            new_q, new_r, new_pp = [], [], []
+            curr_q = self.q_from
+            for q_c, r_c, pp_c in zip(self.q_seq, self.r_seq, self.pp_scores):
+                new_q.append(q_c); new_r.append(r_c); new_pp.append(pp_c)
+                if q_c not in '-.':
+                    if curr_q == target_q_to: break
+                    curr_q += 1
+            self.q_seq, self.r_seq, self.pp_scores = "".join(new_q), "".join(new_r), "".join(new_pp)
+            self.q_to = target_q_to
+            self.r_end = self.r_from + sum(1 for c in self.r_seq if c not in '-.') - 1
+
+        def strip_start_by_hmm_overlap(self, overlap_count: int):
+            """Strips the start of the alignment by N HMM residues."""
+            if overlap_count <= 0: return
+            strip_idx, r_found = 0, 0
+            for r_c in self.r_seq:
+                strip_idx += 1
+                if r_c not in '-.': r_found += 1
+                if r_found == overlap_count: break
             
-            self.r_res_count = sum(1 for c in self.r_seq if c not in '-.')
-            self.r_end = self.r_from + self.r_res_count - 1
+            # Update q_from based on query residues removed
+            q_removed = sum(1 for c in self.q_seq[:strip_idx] if c not in '-.')
+            self.q_from += q_removed
+            self.r_from += overlap_count
+            self.q_seq = self.q_seq[strip_idx:]
+            self.r_seq = self.r_seq[strip_idx:]
+            self.pp_scores = self.pp_scores[strip_idx:]
 
     blocks = [Align(a) for a in alignments]
-    if not blocks:
-        return []
+    if not blocks: return []
 
-    # 1. Filter: Remove alignments contained within others on the reference
+    # 1. Redundancy Filter (Remove nested domains, keep tandem repeats)
     n = len(blocks)
-    sorted_by_score = sorted(range(n), key=lambda i: blocks[i].length, reverse=True)
+    sorted_idx = sorted(range(n), key=lambda i: len(blocks[i].pp_scores), reverse=True)
     keep = [True] * n
-    for i in sorted_by_score:
+    for i in sorted_idx:
         if not keep[i]: continue
-        bi = blocks[i]
         for j in range(n):
             if i == j or not keep[j]: continue
-            bj = blocks[j]
-            if (bi.r_from <= bj.r_from and bj.r_end <= bi.r_end):
+            bi, bj = blocks[i], blocks[j]
+            # If j is inside i on HMM and they overlap on query, it's redundant
+            if (bi.r_from <= bj.r_from and bj.r_end <= bi.r_end) and \
+               not (bj.q_to < bi.q_from or bi.q_to < bj.q_from):
                 keep[j] = False
 
-    blocks = [blocks[i] for i in range(n) if keep[i]]
-    blocks.sort(key=lambda b: b.q_from)
+    blocks = sorted([blocks[i] for i in range(n) if keep[i]], key=lambda b: b.q_from)
     
-    # 2. Dynamic Programming with Collinearity Check
+    # 2. DP Pathfinding
     n = len(blocks)
-    dp = [0.0] * n
-    prev = [-1] * n
-
+    dp, prev = [0.0] * n, [-1] * n
     for i in range(n):
-        dp[i] = blocks[i].q_aligned_len
+        dp[i] = len(blocks[i].pp_scores)
         for j in range(i):
-            gap_q = blocks[i].q_from - blocks[j].q_to - 1
-            gap_r = blocks[i].r_from - blocks[j].r_end - 1
-            
-            if gap_r >= min_gap and gap_q <= max_gap and gap_r <= max_gap:
-                candidate = dp[j] + blocks[i].q_aligned_len
-                if candidate > dp[i]:
-                    dp[i] = candidate
-                    prev[i] = j
+            if blocks[i].q_from > blocks[j].q_from and blocks[i].r_from > blocks[j].r_from:
+                gap_q = blocks[i].q_from - blocks[j].q_to - 1
+                gap_r = blocks[i].r_from - blocks[j].r_end - 1
+                if gap_q <= max_gap and gap_r <= max_gap:
+                    score = dp[j] + len(blocks[i].pp_scores) - max(0, -gap_q)
+                    if score > dp[i]:
+                        dp[i], prev[i] = score, j
 
-    # 3. Greedy Extraction of Chains
-    used = [False] * n
-    results = []
+    # 3. Chain Extraction and Merging
+    used, results = [False] * n, []
     while True:
-        best_i = -1
-        best_score = -float('inf')
+        best_i, best_val = -1, -1.0
         for i in range(n):
-            if not used[i] and dp[i] > best_score:
-                best_score = dp[i]
-                best_i = i
-        if best_i == -1:
-            break
+            if not used[i] and dp[i] > best_val:
+                best_val, best_i = dp[i], i
+        if best_i == -1: break
             
-        chain = []
+        chain_idx = []
         curr = best_i
         while curr != -1:
-            chain.append(curr)
-            used[curr] = True
-            curr = prev[curr]
-        chain.reverse()
-        chain_blocks = [blocks[k] for k in chain]
+            chain_idx.append(curr); used[curr] = True; curr = prev[curr]
+        chain_idx.reverse()
+        chain = [blocks[k] for k in chain_idx]
 
-        # 4. Merging Logic and Metadata Collection
-        merged_q_parts = [chain_blocks[0].q_seq]
-        merged_r_parts = [chain_blocks[0].r_seq]
-        merged_pp_parts = [chain_blocks[0].pp_scores]
-        
-        # Lists for the requested metrics
-        chain_scores = [b.score for b in chain_blocks]
-        chain_c_evals = [b.c_evalue for b in chain_blocks]
-        chain_i_evals = [b.i_evalue for b in chain_blocks]
+        # Start stitching
+        res_q, res_r, res_pp = [chain[0].q_seq], [chain[0].r_seq], [chain[0].pp_scores]
+        scores, cevals, ievals = [b.score for b in chain], [b.c_evalue for b in chain], [b.i_evalue for b in chain]
 
-        for i in range(1, len(chain_blocks)):
-            prev_b = chain_blocks[i - 1]
-            b = chain_blocks[i]
+        for i in range(1, len(chain)):
+            prev_b, curr_b = chain[i-1], chain[i]
+            
+            # Step A: Resolve Query Overlap
+            if curr_b.q_from <= prev_b.q_to:
+                prev_b.truncate_end_to_query(curr_b.q_from - 1)
+                res_q[-1], res_r[-1], res_pp[-1] = prev_b.q_seq, prev_b.r_seq, prev_b.pp_scores
 
-            gap_q = b.q_from - prev_b.q_to - 1
-            gap_r = b.r_from - prev_b.r_end - 1
+            # Step B: Resolve HMM Overlap
+            hmm_overlap = prev_b.r_end - curr_b.r_from + 1
+            if hmm_overlap > 0:
+                curr_b.strip_start_by_hmm_overlap(hmm_overlap)
 
-            if gap_r < 0:
-                overlap_residues = -gap_r
-                chars_to_strip = 0
-                res_found = 0
-                for char in b.r_seq:
-                    chars_to_strip += 1
-                    if char not in '-.':
-                        res_found += 1
-                    if res_found == overlap_residues:
-                        break
-                
-                b.r_seq = b.r_seq[chars_to_strip:]
-                b.q_seq = b.q_seq[chars_to_strip:]
-                b.pp_scores = b.pp_scores[chars_to_strip:]
-                gap_r = 0 
+            # Step C: Bridge the gap (Always based on updated coordinates)
+            q_gap_len = curr_b.q_from - prev_b.q_to - 1
+            r_gap_len = curr_b.r_from - prev_b.r_end - 1
+            
+            # Extract literal query sequence between hits
+            q_bridge = query_seq[prev_b.q_to : curr_b.q_from - 1].lower()
+            r_bridge = ref_seq[prev_b.r_end : curr_b.r_from - 1].lower()
+            
+            bridge_len = max(len(q_bridge), len(r_bridge))
+            if bridge_len > 0:
+                res_q.append(q_bridge + '-' * (bridge_len - len(q_bridge)))
+                res_r.append(r_bridge + '-' * (bridge_len - len(r_bridge)))
+                res_pp.append('.' * bridge_len)
 
-            gap_len = max(gap_q, gap_r, 0)
-            if gap_len > 0:
-                q_gap_seq = query_seq[prev_b.q_to : prev_b.q_to + max(0, gap_q)].lower()
-                r_gap_seq = ref_seq[prev_b.r_end : prev_b.r_end + max(0, gap_r)].lower()
-                merged_q_parts.append(q_gap_seq + '-' * (gap_len - len(q_gap_seq)))
-                merged_r_parts.append(r_gap_seq + '-' * (gap_len - len(r_gap_seq)))
-                merged_pp_parts.append('.' * gap_len)
-
-            merged_q_parts.append(b.q_seq)
-            merged_r_parts.append(b.r_seq)
-            merged_pp_parts.append(b.pp_scores)
+            res_q.append(curr_b.q_seq); res_r.append(curr_b.r_seq); res_pp.append(curr_b.pp_scores)
 
         results.append({
-            'ali': {'seq': ''.join(merged_q_parts), 'from': chain_blocks[0].q_from, 'to': chain_blocks[-1].q_to},
-            'hmm': {'seq': ''.join(merged_r_parts), 'from': chain_blocks[0].r_from, 'to': chain_blocks[-1].r_end},
-            'PP': ''.join(merged_pp_parts),
-            'components': len(chain_blocks),
-            'score': chain_scores,
-            'c_evalue': chain_c_evals,
-            'i_evalue': chain_i_evals
+            'ali': {'seq': ''.join(res_q), 'from': chain[0].q_from, 'to': chain[-1].q_to},
+            'hmm': {'seq': ''.join(res_r), 'from': chain[0].r_from, 'to': chain[-1].r_end},
+            'PP': ''.join(res_pp), 'components': len(chain),
+            'score': scores, 'c_evalue': cevals, 'i_evalue': ievals
         })
 
     results.sort(key=lambda x: x['ali']['from'])
-    for i, res in enumerate(results):
-        res['num'] = i + 1
+    for i, res in enumerate(results): res['num'] = i + 1
     return results

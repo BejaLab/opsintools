@@ -1,5 +1,5 @@
 from .globals import run_with_logger, logger, create_output_dir, read_database
-from .globals import N_REPS, METHODS, THREADS, PAD_N, PAD_C, MAX_SEQ_ID, HMM_MIN_GAP, HMM_MAX_GAP, HMM_MIN_SCORE
+from .globals import N_REPS, METHODS, THREADS, PAD_N, PAD_C, MAX_SEQ_ID, HMM_MAX_GAP, HMM_MIN_SCORE
 from opsintools.classes.Hmmer import Hmmer, HmmerContainer
 from pathlib import Path
 from timeit import default_timer as timer
@@ -169,7 +169,6 @@ def opsinmaphmm(
         data_dirs: list,
         pad_n: int = PAD_N,
         pad_c: int = PAD_C,
-        min_gap: int = HMM_MIN_GAP,
         max_gap: int = HMM_MAX_GAP,
         min_score: float = HMM_MIN_SCORE,
         threads: int = THREADS,
@@ -187,6 +186,7 @@ def opsinmaphmm(
     from collections import defaultdict
     from Bio import SeqIO
     from Bio.SeqRecord import SeqRecord
+    from Bio.Seq import Seq
     import json
     from opsintools.scripts.prot_trim_filter import prot_trim_filter
     from opsintools.scripts.us_align import us_align
@@ -241,7 +241,7 @@ def opsinmaphmm(
         hmmers += Hmmer(profile_path, profile_cons, search = output_file)
 
     hmmers.resolve()
-    hmmers.chain_domains(records, min_gap = min_gap, max_gap = max_gap)
+    hmmers.chain_domains(records, max_gap = max_gap)
 
     logger.info("hmmsearch finished")
 
@@ -303,8 +303,8 @@ def opsinmaphmm(
                 })
                 trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
                 trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
-                trimmed_seq = record.seq[trim_start:first_query_pos-1].lower() + record.seq[first_query_pos-1:last_query_pos].upper() + record.seq[last_query_pos:trim_end].lower()
-                trimmed_rec = SeqRecord(trimmed_seq, id = f"{seq_name}/{trim_start+1}:{trim_end}", description = record.description)
+                trimmed_seq = query_seq.replace('-', '')[trim_start:trim_end]
+                trimmed_rec = SeqRecord(Seq(trimmed_seq), id = f"{seq_name}/{trim_start+1}-{trim_end}", description = record.description)
                 trimmed_records.append(trimmed_rec)
         if not has_domains:
             logger.warning(f"No domains found in {seq_name}")
@@ -328,7 +328,6 @@ def opsinmaphmm_cli():
     main_group.add_argument('-o', metavar = 'OUTPUT', required = True, help = 'output directory')
     main_group.add_argument('--pad-n', default = PAD_N, type = int, help = f'N-terminal padding for query trimming (default: {PAD_N})')
     main_group.add_argument('--pad-c', default = PAD_C, type = int, help = f'C-terminal padding for query trimming (default: {PAD_C})')
-    main_group.add_argument('--min-gap', default = HMM_MIN_GAP, type = int, help = f'Minimum gap for chaining (default: {HMM_MIN_GAP})')
     main_group.add_argument('--max-gap', default = HMM_MAX_GAP, type = int, help = f'Maximum gap for chaining (default: {HMM_MAX_GAP})')
     main_group.add_argument('--min-score', default = HMM_MIN_SCORE, type = float, help = f'Minimum score (default: {HMM_MIN_SCORE})')
     main_group.add_argument('-f', action = 'store_true', help = 'whether to overwrite files in the output directory if it exists')
@@ -342,7 +341,6 @@ def opsinmaphmm_cli():
         data_dirs = args.d,
         pad_n = args.pad_n,
         pad_c = args.pad_c,
-        min_gap = args.min_gap,
         max_gap = args.max_gap,
         min_score = args.min_score,
         threads = args.t,
