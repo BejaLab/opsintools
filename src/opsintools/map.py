@@ -228,6 +228,7 @@ def opsinmaphmm(
     create_output_dir(output_dir, force)
     json_output = output_path / 'opsinmap.json'
     trimmed_fasta = output_path / 'trimmed.fasta'
+    mapping_output = output_path / 'mapping.tsv'
 
     hmmsearch_start = timer()
     logger.info("Doing the searches")
@@ -246,73 +247,81 @@ def opsinmaphmm(
     logger.info("hmmsearch finished")
 
     output = []
-    trimmed_records = []
-    for match in hmmers.matches:
-        profile_file = match["profile_file"]
-        profile_name = Path(profile_file).parent.stem
-        database = databases[profile_name]
-        ref_dom = database['ref_domain']
-        profile_cons = database['profile_cons']
-        profile_len = len(profile_cons)
-        seq_name = match["seq_name"]
-        record = records[seq_name]
-        has_domains = False
-        for dom in match['domains']:
-            dom_score = sum(dom['score']) if isinstance(dom['score'], list) else dom['score'][0]
-            if dom_score >= min_score:
-                has_domains = True
-                dom = local_to_global(dom, profile_cons, record.seq)
-                hmm_seq, ref_seq, ref_pp, query_seq, query_pp = sync_pwas(ref_dom['hmm']['seq'], ref_dom['ali']['seq'], ref_dom['PP'], dom['hmm']['seq'], dom['ali']['seq'], dom['PP'])
-                hmm_pos = ref_pos = query_pos = 0
-                aln_map = []
-                first_hmm_pos = first_query_pos = None
-                last_hmm_pos  = last_query_pos = None
-                for hmm_res, ref_res, ref_pp_res, query_res, query_pp_res in zip(hmm_seq, ref_seq, ref_pp, query_seq, query_pp):
-                    hmm_not_gap = hmm_res != '-'
-                    ref_not_gap = ref_res != '-'
-                    query_not_gap = query_res != '-'
-                    hmm_pos += hmm_not_gap
-                    ref_pos += ref_not_gap
-                    query_pos += query_not_gap
-                    if hmm_not_gap and query_not_gap:
-                        if first_hmm_pos is None:
-                            first_hmm_pos, first_query_pos = hmm_pos, query_pos
-                        else:
-                            last_hmm_pos, last_query_pos = hmm_pos, query_pos
-                        if ref_not_gap:
-                            aln_map.append({
-                                "ref_pos": ref_pos, "query_pos": query_pos, "hmm_pos": hmm_pos,
-                                "ref_res": ref_res, "query_res": query_res, "hmm_res": hmm_res,
-                                "ref_score": Hmmer.decode_prob(ref_pp_res), "query_score": Hmmer.decode_prob(query_pp_res),
-                                "TM": database['ref_tms'][ref_pos] if ref_pos in database['ref_tms'] else '-'
-                            })
-                trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
-                trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
-                trimmed_name = f"{seq_name}/{trim_start+1}-{trim_end}"
-                trimmed_seq = query_seq.replace('-', '')[trim_start:trim_end]
-                trimmed_rec = SeqRecord(Seq(trimmed_seq), id = trimmed_name, description = record.description)
-                trimmed_records.append(trimmed_rec)
-                output.append({
-                    "profile": profile_name,
-                    "query": seq_name,
-                    "trimmed": trimmed_name,
-                    "ref": database['ref_id'],
-                    "domain": dom['num'],
-                    "alignment": {
-                        "query": query_seq,
-                        "ref": ref_seq,
-                        "query_score": query_pp,
-                        "ref_score": ref_pp,
-                        "hmm_consensus": hmm_seq
-                    },
-                    "map": aln_map
-                })
+    trimmed_records = {}
+    with open(mapping_output, 'w') as mapping_fh:
+        mapping_fh.write("\t".join([
+            "query","dom_num","profile","ref_pos","query_pos","hmm_pos","ref_res","query_res","hmm_res","ref_score","query_score","transmembrane_helix"
+        ]) + "\n")
+        for match in hmmers.matches:
+            profile_file = match["profile_file"]
+            profile_name = Path(profile_file).parent.stem
+            database = databases[profile_name]
+            ref_dom = database['ref_domain']
+            profile_cons = database['profile_cons']
+            profile_len = len(profile_cons)
+            seq_name = match["seq_name"]
+            record = records[seq_name]
+            has_domains = False
+            for dom in match['domains']:
+                dom_num = dom['num']
+                dom_score = sum(dom['score']) if isinstance(dom['score'], list) else dom['score'][0]
+                if dom_score >= min_score:
+                    has_domains = True
+                    dom = local_to_global(dom, profile_cons, record.seq)
+                    hmm_seq, ref_seq, ref_pp, query_seq, query_pp = sync_pwas(ref_dom['hmm']['seq'], ref_dom['ali']['seq'], ref_dom['PP'], dom['hmm']['seq'], dom['ali']['seq'], dom['PP'])
+                    hmm_pos = ref_pos = query_pos = 0
+                    aln_map = []
+                    first_hmm_pos = first_query_pos = None
+                    last_hmm_pos  = last_query_pos = None
+                    for hmm_res, ref_res, ref_pp_res, query_res, query_pp_res in zip(hmm_seq, ref_seq, ref_pp, query_seq, query_pp):
+                        hmm_not_gap = hmm_res != '-'
+                        ref_not_gap = ref_res != '-'
+                        query_not_gap = query_res != '-'
+                        hmm_pos += hmm_not_gap
+                        ref_pos += ref_not_gap
+                        query_pos += query_not_gap
+                        if hmm_not_gap and query_not_gap:
+                            if first_hmm_pos is None:
+                                first_hmm_pos, first_query_pos = hmm_pos, query_pos
+                            else:
+                                last_hmm_pos, last_query_pos = hmm_pos, query_pos
+                            if ref_not_gap:
+                                ref_score = Hmmer.decode_prob(ref_pp_res)
+                                query_score = Hmmer.decode_prob(query_pp_res)
+                                tm = database['ref_tms'][ref_pos] if ref_pos in database['ref_tms'] else "-"
+                                mapping_fh.write(
+                                    f"{seq_name}\t{dom_num}\t{profile_name}\t{ref_pos}\t{query_pos}\t{hmm_pos}\t{ref_res}\t{query_res}\t{hmm_res}\t{ref_score}\t{query_score}\t{tm}\n"
+                                )
+                    trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
+                    trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
+                    trimmed_name = f"{seq_name}/{trim_start+1}-{trim_end}"
+                    trimmed_seq = query_seq.replace('-', '')[trim_start:trim_end]
+                    # If already found an identical trimming - combine
+                    if trimmed_name in trimmed_records:
+                        prev_seq = trimmed_records[trimmed_name].seq
+                        trimmed_seq = ''.join(a if a.isupper() else b for a, b in zip(trimmed_seq, prev_seq))
+                    trimmed_rec = SeqRecord(Seq(trimmed_seq), id = trimmed_name, description = record.description)
+                    trimmed_records[trimmed_name] = trimmed_rec
+                    output.append({
+                        "profile": profile_name,
+                        "query": seq_name,
+                        "trimmed": trimmed_name,
+                        "ref": database['ref_id'],
+                        "domain": dom_num,
+                        "alignment": {
+                            "query": query_seq,
+                            "ref": ref_seq,
+                            "query_score": query_pp,
+                            "ref_score": ref_pp,
+                            "hmm_consensus": hmm_seq
+                        }
+                    })
         if not has_domains:
             logger.warning(f"No domains found in {seq_name}")
     with open(json_output, 'w') as file:
         json.dump(output, file, indent = 2)
     with open(trimmed_fasta, 'w') as file:
-        SeqIO.write(trimmed_records, file, "fasta")
+        SeqIO.write(trimmed_records.values(), file, "fasta")
     logger.info("Finished") 
     return output
 

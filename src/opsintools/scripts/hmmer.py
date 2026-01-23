@@ -66,6 +66,8 @@ def sync_pwas(ref1, seq1, pp1, ref2, seq2, pp2):
     aln2 = AlignIO.read(StringIO(fasta2), "fasta").alignment
     return Alignment.from_alignments_with_same_reference([aln1, aln2])
 
+from typing import Any
+
 def chain_local_alignments(
     query_seq: str,
     ref_seq: str,
@@ -84,7 +86,6 @@ def chain_local_alignments(
             self.r_end = self.r_from + sum(1 for c in self.r_seq if c not in '-.') - 1
 
         def truncate_end_to_query(self, target_q_to: int):
-            """Truncates the block so it ends at exactly target_q_to residue."""
             if target_q_to >= self.q_to: return
             new_q, new_r, new_pp = [], [], []
             curr_q = self.q_from
@@ -98,56 +99,36 @@ def chain_local_alignments(
             self.r_end = self.r_from + sum(1 for c in self.r_seq if c not in '-.') - 1
 
         def strip_start_by_hmm_overlap(self, overlap_count: int):
-            """Strips the start of the alignment by N HMM residues."""
             if overlap_count <= 0: return
             strip_idx, r_found = 0, 0
             for r_c in self.r_seq:
                 strip_idx += 1
                 if r_c not in '-.': r_found += 1
                 if r_found == overlap_count: break
-            
-            # Update q_from based on query residues removed
             q_removed = sum(1 for c in self.q_seq[:strip_idx] if c not in '-.')
             self.q_from += q_removed
             self.r_from += overlap_count
-            self.q_seq = self.q_seq[strip_idx:]
-            self.r_seq = self.r_seq[strip_idx:]
-            self.pp_scores = self.pp_scores[strip_idx:]
+            self.q_seq, self.r_seq, self.pp_scores = self.q_seq[strip_idx:], self.r_seq[strip_idx:], self.pp_scores[strip_idx:]
 
     blocks = [Align(a) for a in alignments]
     if not blocks: return []
 
-    # 1. Redundancy Filter (Remove nested domains, keep tandem repeats)
+    # 1. DP Pathfinding: Must move forward on Query AND HMM
     n = len(blocks)
-    sorted_idx = sorted(range(n), key=lambda i: len(blocks[i].pp_scores), reverse=True)
-    keep = [True] * n
-    for i in sorted_idx:
-        if not keep[i]: continue
-        for j in range(n):
-            if i == j or not keep[j]: continue
-            bi, bj = blocks[i], blocks[j]
-            # If j is inside i on HMM and they overlap on query, it's redundant
-            if (bi.r_from <= bj.r_from and bj.r_end <= bi.r_end) and \
-               not (bj.q_to < bi.q_from or bi.q_to < bj.q_from):
-                keep[j] = False
-
-    blocks = sorted([blocks[i] for i in range(n) if keep[i]], key=lambda b: b.q_from)
-    
-    # 2. DP Pathfinding
-    n = len(blocks)
-    dp, prev = [0.0] * n, [-1] * n
+    blocks.sort(key=lambda b: b.q_from)
+    dp, prev = [float(len(b.pp_scores)) for b in blocks], [-1] * n
     for i in range(n):
-        dp[i] = len(blocks[i].pp_scores)
         for j in range(i):
-            if blocks[i].q_from > blocks[j].q_from and blocks[i].r_from > blocks[j].r_from:
+            # Collinearity Constraint: block i must be after block j on both sequences
+            if blocks[i].q_from > blocks[j].q_to and blocks[i].r_from > blocks[j].r_end:
                 gap_q = blocks[i].q_from - blocks[j].q_to - 1
                 gap_r = blocks[i].r_from - blocks[j].r_end - 1
                 if gap_q <= max_gap and gap_r <= max_gap:
-                    score = dp[j] + len(blocks[i].pp_scores) - max(0, -gap_q)
+                    score = dp[j] + len(blocks[i].pp_scores)
                     if score > dp[i]:
                         dp[i], prev[i] = score, j
 
-    # 3. Chain Extraction and Merging
+    # 2. Chain Extraction
     used, results = [False] * n, []
     while True:
         best_i, best_val = -1, -1.0
@@ -163,28 +144,18 @@ def chain_local_alignments(
         chain_idx.reverse()
         chain = [blocks[k] for k in chain_idx]
 
-        # Start stitching
+        # 3. Stitching with literal filling
         res_q, res_r, res_pp = [chain[0].q_seq], [chain[0].r_seq], [chain[0].pp_scores]
-        scores, cevals, ievals = [b.score for b in chain], [b.c_evalue for b in chain], [b.i_evalue for b in chain]
-
+        
         for i in range(1, len(chain)):
             prev_b, curr_b = chain[i-1], chain[i]
             
-            # Step A: Resolve Query Overlap
+            # Resolve overlaps (should be minimal with the DP constraint)
             if curr_b.q_from <= prev_b.q_to:
                 prev_b.truncate_end_to_query(curr_b.q_from - 1)
                 res_q[-1], res_r[-1], res_pp[-1] = prev_b.q_seq, prev_b.r_seq, prev_b.pp_scores
 
-            # Step B: Resolve HMM Overlap
-            hmm_overlap = prev_b.r_end - curr_b.r_from + 1
-            if hmm_overlap > 0:
-                curr_b.strip_start_by_hmm_overlap(hmm_overlap)
-
-            # Step C: Bridge the gap (Always based on updated coordinates)
-            q_gap_len = curr_b.q_from - prev_b.q_to - 1
-            r_gap_len = curr_b.r_from - prev_b.r_end - 1
-            
-            # Extract literal query sequence between hits
+            # Fill the physical gap using original sequences
             q_bridge = query_seq[prev_b.q_to : curr_b.q_from - 1].lower()
             r_bridge = ref_seq[prev_b.r_end : curr_b.r_from - 1].lower()
             
@@ -196,11 +167,26 @@ def chain_local_alignments(
 
             res_q.append(curr_b.q_seq); res_r.append(curr_b.r_seq); res_pp.append(curr_b.pp_scores)
 
+        # Final string assembly
+        final_q, final_r, final_pp = "".join(res_q), "".join(res_r), "".join(res_pp)
+
+        # Calculate coordinates by inspecting final sequence (most reliable method)
+        def get_coords(seq, start_val):
+            first_idx = next((i for i, c in enumerate(seq) if c not in '-.'), 0)
+            last_idx = next((i for i, c in enumerate(reversed(seq)) if c not in '-.'), 0)
+            residues_before = sum(1 for c in seq[:first_idx] if c not in '-.')
+            total_residues = sum(1 for c in seq if c not in '-.')
+            return start_val + residues_before, start_val + residues_before + total_residues - 1
+
+        # We use the chain's original first block as the coordinate anchor
+        q_start, q_end = get_coords(final_q, chain[0].q_from)
+        r_start, r_end = get_coords(final_r, chain[0].r_from)
+
         results.append({
-            'ali': {'seq': ''.join(res_q), 'from': chain[0].q_from, 'to': chain[-1].q_to},
-            'hmm': {'seq': ''.join(res_r), 'from': chain[0].r_from, 'to': chain[-1].r_end},
-            'PP': ''.join(res_pp), 'components': len(chain),
-            'score': scores, 'c_evalue': cevals, 'i_evalue': ievals
+            'ali': {'seq': final_q, 'from': q_start, 'to': q_end},
+            'hmm': {'seq': final_r, 'from': r_start, 'to': r_end},
+            'PP': final_pp, 'components': len(chain),
+            'score': [b.score for b in chain], 'c_evalue': [b.c_evalue for b in chain]
         })
 
     results.sort(key=lambda x: x['ali']['from'])
