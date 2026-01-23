@@ -262,10 +262,11 @@ def opsinmaphmm(
             seq_name = match["seq_name"]
             record = records[seq_name]
             has_domains = False
+            dom_num = 0
             for dom in match['domains']:
-                dom_num = dom['num']
                 dom_score = sum(dom['score']) if isinstance(dom['score'], list) else dom['score'][0]
                 if dom_score >= min_score:
+                    dom_num += 1
                     has_domains = True
                     dom = local_to_global(dom, profile_cons, record.seq)
                     hmm_seq, ref_seq, ref_pp, query_seq, query_pp = sync_pwas(ref_dom['hmm']['seq'], ref_dom['ali']['seq'], ref_dom['PP'], dom['hmm']['seq'], dom['ali']['seq'], dom['PP'])
