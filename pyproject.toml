@@ -33,3 +33,10 @@ opsinpdb = "opsintools:opsinpdb_cli"
 opsinmaphmm = "opsintools:opsinmaphmm_cli"
 mustang_msa = "opsintools:mustang_msa_cli"
 mtm_align_msa = "opsintools:mtm_align_msa_cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["opsintools.classes", "opsintools.resources", "opsintools.scripts"]
+
+[tool.setuptools.package-data]
+"opsintools.resources" = ["*.json"]
