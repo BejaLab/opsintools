@@ -150,9 +150,6 @@ def opsinpdb_cli():
 
     chains = [] if not args.c else args.c.split(',')
     ligands = [] if not args.ligands else args.ligands.split(',')
-    if bool(args.i) == bool(args.a):
-        raise ValueError("Must specify either -a or -i")
-
     if args.i:
         is_file = True
         file_or_accession = args.i
