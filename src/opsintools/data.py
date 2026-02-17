@@ -112,15 +112,16 @@ def opsinpdb(
     
     import importlib.resources
     from opsintools.scripts.pdb import process_pdb
+    from opsintools.resources import atom_map
 
-    atom_map_file = None if no_remap else importlib.resources.files('opsintools.resources').joinpath('atom_map.json')
+    atom_map = None if no_remap else atom_map.atoms
 
     process_pdb(
         file_or_accession = file_or_accession,
         is_file = is_file,
         output_file = output_file,
         chains = chains,
-        atom_map_file = atom_map_file,
+        atom_map = atom_map,
         non_cov_lig = non_cov_lig,
         dont_remove_w = dont_remove_w,
         dont_remove_h = dont_remove_h,

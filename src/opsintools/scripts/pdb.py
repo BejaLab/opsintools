@@ -3,7 +3,7 @@ def process_pdb(
     is_file: bool,
     output_file: str | None,
     chains: list[str],
-    atom_map_file: str | None,
+    atom_map: dict | None,
     non_cov_lig: list[str],
     dont_remove_w: bool,
     dont_remove_h: bool,
@@ -38,11 +38,6 @@ def process_pdb(
         if not check_alphanum(lig):
             raise ValueError(f"Ligand names must be composed only of alphanumerical characters, got: {lig}")
         lig_atoms_to_remove += f" and not (resn {lig})"
-
-    atom_map = {}
-    if atom_map_file:
-        with open(atom_map_file) as file:
-            atom_map = json.load(file)
 
     my_space = {}
     with PyMol() as pm:
