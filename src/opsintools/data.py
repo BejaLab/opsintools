@@ -93,6 +93,7 @@ def opsinpdb(
     is_file: bool,
     chains: list[str] = [],
     non_cov_lig: list[str] = [],
+    cov_lig_to_remove: list[str] = [],
     dont_remove_w: bool = False,
     dont_remove_h: bool = False,
     dont_remove_alt: bool = False,
@@ -123,6 +124,7 @@ def opsinpdb(
         chains = chains,
         atom_map = atom_map,
         non_cov_lig = non_cov_lig,
+        cov_lig_to_remove = cov_lig_to_remove,
         dont_remove_w = dont_remove_w,
         dont_remove_h = dont_remove_h,
         dont_remove_alt = dont_remove_alt,
@@ -146,11 +148,13 @@ def opsinpdb_cli():
     main_group.add_argument('-W', action = 'store_true', help = 'do not remove water molecules (default: remove)')
     main_group.add_argument('-A', action = 'store_true', help = 'do not remove alternative conformations (default: remove)')
     main_group.add_argument('--ligands', metavar = 'LIGANDS', help = 'comma-separated list of non-covalent ligands to retain (default: remove all)')
+    main_group.add_argument('--ligands-remove', metavar = 'LIGANDS_REMOVE', help = 'comma-separated list of covalent ligands to remove (default: don\'t remove)')
 
     args = parser.parse_args()
 
     chains = [] if not args.c else args.c.split(',')
     ligands = [] if not args.ligands else args.ligands.split(',')
+    ligands_remove = [] if not args.ligands_remove else args.ligands_remove.split(',')
     if args.i:
         is_file = True
         file_or_accession = args.i
@@ -166,6 +170,7 @@ def opsinpdb_cli():
         chains = chains,
         no_remap = args.L,
         non_cov_lig = ligands,
+        cov_lig_to_remove = ligands_remove,
         dont_remove_w = args.W,
         dont_remove_h = args.H,
         dont_remove_alt = args.A

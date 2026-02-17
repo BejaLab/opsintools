@@ -5,6 +5,7 @@ def process_pdb(
     chains: list[str],
     atom_map: dict | None,
     non_cov_lig: list[str],
+    cov_lig_to_remove: list[str],
     dont_remove_w: bool,
     dont_remove_h: bool,
     dont_remove_alt: bool,
@@ -33,11 +34,17 @@ def process_pdb(
             select.append(f"not chain {chain}")
         remove_chains = ' and '.join(select)
 
-    lig_atoms_to_remove = "hetatm and not (byres bound_to polymer)"
+    lig_atoms_to_remove = [ "hetatm and not (byres bound_to polymer)" ]
     for lig in non_cov_lig:
         if not check_alphanum(lig):
             raise ValueError(f"Ligand names must be composed only of alphanumerical characters, got: {lig}")
-        lig_atoms_to_remove += f" and not (resn {lig})"
+        lig_atoms_to_remove.append(f"not (resn {lig})")
+
+    cov_lig_atoms_to_remove = []
+    for lig in cov_lig_to_remove:
+        if not check_alphanum(lig):
+            raise ValueError(f"Ligand names must be composed only of alphanumerical characters, got: {lig}")
+        cov_lig_atoms_to_remove.append(f"(resn {lig} and (byres bound_to polymer))")
 
     my_space = {}
     with PyMol() as pm:
@@ -74,7 +81,10 @@ def process_pdb(
                 raise ValueError(f"Found additional atoms for ligand {resn_from}: {my_space['extra_atoms']}")
 
         # Remove all extra non-covalent ligands
-        pm.remove(lig_atoms_to_remove)
+        pm.remove(' AND '.join(lig_atoms_to_remove))
+
+        # Remove requested covalent ligands
+        pm.remove(' OR '.join(cov_lig_atoms_to_remove))
 
         # Re-number non-polymer resi's
         my_space['polymer_residues'] = set()
