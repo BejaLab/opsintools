@@ -317,8 +317,8 @@ def opsinmaphmm(
                             "hmm_consensus": hmm_seq
                         }
                     })
-        if not has_domains:
-            logger.warning(f"No domains found in {seq_name}")
+            if not has_domains:
+                logger.warning(f"No domains found in {seq_name}")
     with open(json_output, 'w') as file:
         json.dump(output, file, indent = 2)
     with open(trimmed_fasta, 'w') as file:
