@@ -4,15 +4,22 @@ This project contains a set of tools for analysis of opsin structures and sequen
 
 Each tool has an API and a CLI. Keep in mind that the interfaces might change in the future since the project is under active development.
 
-# Installation
+## Try it
 
-There are python and non-python dependencies: the most straightforward installation is via conda which takes care of both.
+Some of the tools can be run from the browser via [Google Colab](https://colab.research.google.com/):
 
-## conda
+* [opsinmaphmm](https://colab.research.google.com/github/BejaLab/opsintools/blob/main/colab/opsinmaphmm.ipynb)
+* [opsinpdb](https://colab.research.google.com/github/BejaLab/opsintools/blob/main/colab/opsinpdb.ipynb)
+
+## Install it
+
+Installation is currently available for Unix-like systems. There are python and non-python dependencies: the most straightforward installation is via conda which takes care of both.
+
+### conda
 
 Use the provided environment definition: `conda env create -n opsintools -f env.yaml --channel-priority flexible` and then `conda activate opsintools`. Use `mamba` if available.
 
-## pypi
+### pypi
 
 `opsintools` and its python dependencies can be installed with `pip install git+https://github.com/BejaLab/opsintools`. Non-python dependencies should then be installed separately. As of now these include:
 
@@ -20,7 +27,9 @@ Use the provided environment definition: `conda env create -n opsintools -f env.
 * [`t-coffee`](https://tcoffee.crg.eu/) (v.13.46 tested)
 * [`US-align`](https://github.com/pylelab/USalign) (v.20241201 tested)
 
-## opsinmap3d
+## The tools
+
+### opsinmap3d
 
 ```
 usage: opsinmap3d [-h] -i INPUT -d DATADIR -o OUTPUT [-f] [-n N_REPS] [-t THREADS] [--only-exptl] [--prefer-exptl] [--pad-n PAD_N] [--pad-c PAD_C]
@@ -62,7 +71,7 @@ The API function `opsinmap3d` returns the dictionary mapping reference positions
 
 See `opsinmap3d -h` or `from opsintools import opsinmap3d; help(opsinmap3d)` for more details.
 
-## opsinalign3d
+### opsinalign3d
 
 ```
 usage: opsinalign3d [-h] -i INPUT [INPUT ...] -o OUTPUT [-f] [-t THREADS] [--methods METHODS]
@@ -91,7 +100,7 @@ See `opsinalign3d -h` or `from opsintools import opsinalign3d; help(opsinalign3d
 
 Currently supported methods are: `sap_pair`, `mustang_pair`, `t_coffee_msa`, `probcons_msa`, `vmaffteinsi_msa`, `mafftfftns1_msa`, `mafftfftnsi_msa`, `mafftginsi_msa`, `mafftlinsi_msa`, `mafft_msa`, `mafftnwnsi_msa`, `mafftsparsecore_msa` and two methods implemented here: `mustang_msa`, `mtm_align_msa`.
 
-## opsinmaphmm
+### opsinmaphmm
 
 ```
 usage: opsinmaphmm [-h] -i INPUT [-d DATADIR [DATADIR ...]] -o OUTPUT [--pad-n PAD_N] [--pad-c PAD_C] [--max-gap MAX_GAP] [--min-score MIN_SCORE] [-f]
@@ -126,26 +135,28 @@ The API function `opsinmaphmm` returns the dictionary mapping reference position
 
 See `opsinmaphmm -h` or `from opsintools import opsinmaphmm; help(opsinmaphmm)` for more details.
 
-## opsinpdb
+### opsinpdb
 
 ```
-usage: opsinpdb [-h] [-i FILE] [-a FILE] [-o OUTPUT] [-c CHAINS] [-L] [-H] [-W] [-A] [--ligands LIGANDS]
+usage: opsinpdb [-h] [-i FILE] [-a FILE] [-o OUTPUT] [-c CHAINS] [-L] [-H] [-W] [-A] [--ligands LIGANDS] [--ligands-remove LIGANDS_REMOVE]
 
 Read a structure or fetch from PDB, cleanup and save as a PDB file.
 
 options:
-  -h, --help         show this help message and exit
+  -h, --help            show this help message and exit
 
 Arguments:
-  -i FILE            Input file
-  -a FILE            PDB accession (optionally including chain)
-  -o OUTPUT          output path (default: stdout)
-  -c CHAINS          comma-separated list of chains (default: all chains)
-  -L                 do not remap LYR atoms (default: do remap)
-  -H                 do not remove hydrogens (default: remove)
-  -W                 do not remove water molecules (default: remove)
-  -A                 do not remove alternative conformations (default: remove)
-  --ligands LIGANDS  comma-separated list of non-covalent ligands to retain (default: remove all)
+  -i FILE               Input file
+  -a FILE               PDB accession (optionally including chain)
+  -o OUTPUT             output path (default: stdout)
+  -c CHAINS             comma-separated list of chains (default: all chains)
+  -L                    do not remap LYR atoms (default: do remap)
+  -H                    do not remove hydrogens (default: remove)
+  -W                    do not remove water molecules (default: remove)
+  -A                    do not remove alternative conformations (default: remove)
+  --ligands LIGANDS     comma-separated list of non-covalent ligands to retain (default: remove all)
+  --ligands-remove LIGANDS_REMOVE
+                        comma-separated list of covalent ligands to remove (default: don't remove)
 ```
 
 Fetches a PDB record or reads a local CIF or PDB file, cleans it up and saves as a PDB file. The cleanup includes renaming the atoms of `LYR` (= `LYS+RET`), removing non-covalent ligands, water molecules, hydrogens, alternative states and unwanted chains. See `opsinpdb -h`.
