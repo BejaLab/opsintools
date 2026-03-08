@@ -197,7 +197,6 @@ def t_coffee(pdb_dict, output_prefix, methods, threads):
     if shutil.which("t_coffee") is None:
         raise FileNotFoundError("t_coffee not found in PATH")
     check_t_coffee_methods(methods)
-    custom_methods = [ "mustang_msa" ]
     with TemporaryDirectory() as work_dir:
         work_path = Path(work_dir)
         methods = write_custom_methods(methods, work_dir)
