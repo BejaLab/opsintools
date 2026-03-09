@@ -67,11 +67,10 @@ def prot_trim_filter(
             start = query_first_aln_pos - missing_n - pad_n
             end = query_last_aln_pos + missing_c + pad_c
             trim_struct(query_structure, seqres, trimmed_pdb_file, start, end)
-            success = True
+            return start, end
 
-    if not success:
-        with open(trimmed_pdb_file, 'w'):
-            pass
+    with open(trimmed_pdb_file, 'w'):
+        return -1, -1
 
 def filter_aln_seq(aln_file, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos):
     """Function to check if query needs to be filtered out

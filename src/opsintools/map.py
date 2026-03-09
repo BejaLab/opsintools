@@ -40,6 +40,7 @@ def opsinmap3d(
     from pathlib import Path
     import json
     from multiprocessing import Pool
+    import pandas as pd
 
     checking_start = timer()
     logger.info("Checking the input")
@@ -48,8 +49,9 @@ def opsinmap3d(
 
     output_path = Path(output_dir)
     aln_dir = output_path / "alignments"
+    query_path = Path(query_pdb)
 
-    if not Path(query_pdb).is_file():
+    if not query_path.is_file():
         raise FileNotFoundError(f"Input file {query_pdb} not found")
 
     create_output_dir(output_dir, force)
@@ -65,6 +67,7 @@ def opsinmap3d(
     aln_to_ref = output_path / 'aln_to_ref.txt'
     trimmed_pdb = output_path / 'trimmed.pdb'
     t_coffee_aln = output_path / 't_coffee.aln'
+    mapping_output = output_path / 'mapping.tsv'
     json_output = output_path / 'opsinmap.json'
 
     alignment_to_ref_start = timer()
@@ -73,7 +76,7 @@ def opsinmap3d(
 
     trimming_start = timer()
     logger.info("Trimming the query")
-    prot_trim_filter(aln_to_ref, query_pdb, ref['filename'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
+    trim_start, trim_end = prot_trim_filter(aln_to_ref, query_pdb, ref['filename'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
     templates_start = timer()
     chosen_templates: list = []
@@ -99,7 +102,16 @@ def opsinmap3d(
     t_coffee(chosen_pdbs, t_coffee_aln, methods = methods, threads = threads)
 
     finishing_time = timer()
-    output: dict = aln_mapping(t_coffee_aln, trimmed_pdb, ref['filename'], 'query', ref)
+    alignment, warnings, mapping = aln_mapping(t_coffee_aln, trimmed_pdb, ref['filename'], 'query', ref)
+    output = {
+        'query': query_path.stem,
+        'trimmed': f"{query_path.stem}/{trim_start}-{trim_end}",
+        'ref': ref['id'],
+        'alignment': alignment,
+        'templates': chosen_templates
+    }
+    if warnings:
+        output['warnings'] = warnings
     output['params'] = {
         'methods': methods,
         'data_dir': str(Path(data_dir).resolve()),
@@ -110,7 +122,6 @@ def opsinmap3d(
         'only_exptl': only_exptl,
         'prefer_exptl': prefer_exptl
     }
-    output['templates'] = chosen_templates
     output['timer'] = {
         'input checking': alignment_to_ref_start - checking_start,
         'alignment to reference': trimming_start - alignment_to_ref_start,
@@ -119,8 +130,14 @@ def opsinmap3d(
         'alignment to templates': finishing_time - alignment_start,
         'finishing': timer() - finishing_time
     }
+    with open(mapping_output, 'w') as mapping_fh:
+        df = pd.DataFrame(mapping)
+        df['query'] = query_path.stem
+        df['ref'] = ref['id']
+        cols = [ 'query', 'ref', 'query_pos', 'ref_pos', 'query_res', 'ref_res', 'query_score', 'ref_score', 'transmembrane_helix' ]
+        df.to_csv(mapping_fh, columns = cols, sep = "\t", index = False)
     with open(json_output, 'w') as file:
-        json.dump(output, file, indent = 2)
+        json.dump([ output ], file, indent = 2)
     logger.info("Finished")
     return output
 
@@ -193,6 +210,7 @@ def opsinmaphmm(
     from opsintools.scripts.score_alignments import score_alignments
     from opsintools.scripts.t_coffee import t_coffee, check_t_coffee_methods
     from opsintools.scripts.hmmer import hmmsearch, local_to_global, sync_pwas
+    import pandas as pd
 
     logger.info("Checking the input")
 
@@ -249,13 +267,13 @@ def opsinmaphmm(
     output = []
     trimmed_records = {}
     with open(mapping_output, 'w') as mapping_fh:
-        mapping_fh.write("\t".join([
-            "query","dom_num","profile","ref_pos","query_pos","hmm_pos","ref_res","query_res","hmm_res","ref_score","query_score","transmembrane_helix"
-        ]) + "\n")
+        cols = [ 'query', 'dom_num', 'ref', 'query_pos', 'ref_pos', 'hmm_pos', 'query_res', 'ref_res', 'hmm_res', 'query_score', 'ref_score', 'transmembrane_helix' ]
+        mapping_fh.write("\t".join(cols) + "\n")
         for match in hmmers.matches:
             profile_file = match["profile_file"]
             profile_name = Path(profile_file).parent.stem
             database = databases[profile_name]
+            ref_id = database['ref_id']
             ref_dom = database['ref_domain']
             profile_cons = database['profile_cons']
             profile_len = len(profile_cons)
@@ -266,6 +284,7 @@ def opsinmaphmm(
             for dom in match['domains']:
                 dom_score = sum(dom['score']) if isinstance(dom['score'], list) else dom['score'][0]
                 if dom_score >= min_score:
+                    rows = []
                     dom_num += 1
                     has_domains = True
                     dom = local_to_global(dom, profile_cons, record.seq)
@@ -290,9 +309,13 @@ def opsinmaphmm(
                                 ref_score = Hmmer.decode_prob(ref_pp_res)
                                 query_score = Hmmer.decode_prob(query_pp_res)
                                 tm = database['ref_tms'][ref_pos] if ref_pos in database['ref_tms'] else "-"
-                                mapping_fh.write(
-                                    f"{seq_name}\t{dom_num}\t{profile_name}\t{ref_pos}\t{query_pos}\t{hmm_pos}\t{ref_res}\t{query_res}\t{hmm_res}\t{ref_score}\t{query_score}\t{tm}\n"
-                                )
+                                rows.append({
+                                    'query': seq_name, 'dom_num': dom_num, 'ref': ref_id,
+                                    'query_pos': query_pos, 'ref_pos': ref_pos, 'hmm_pos': hmm_pos,
+                                    'query_res': query_res, 'ref_res': ref_res, 'hmm_res': hmm_res,
+                                    'query_score': query_score, 'ref_score': ref_score, 'transmembrane_helix': tm
+                                })
+                    pd.DataFrame(rows).to_csv(mapping_fh, columns = cols, sep = "\t", index = False, header = False)
                     trim_start = max(0, first_query_pos - first_hmm_pos - pad_n)
                     trim_end = min(len(record.seq), last_query_pos + profile_len - last_hmm_pos + pad_c)
                     trimmed_name = f"{seq_name}/{trim_start+1}-{trim_end}"

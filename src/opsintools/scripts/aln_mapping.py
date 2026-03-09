@@ -67,7 +67,7 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
                 'query_res': query_res,
                 'ref_score': int(ref_score),
                 'query_score': int(query_score),
-                'TM': tm
+                'transmembrane_helix': tm
             }
         if query_not_gap or ref_not_gap:
             ref_trimmed.append(ref_res)
@@ -96,11 +96,5 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
     ref_score_seq   = pad_sequence('', ''.join(ref_score_trimmed),   '', pad_left, pad_right)
 
     # Add a description to the data that will be the json file
-    out_data = {
-        "map": list(aln.values()),
-        "alignment": { "query": query_seq, "ref": ref_seq, "query_score": query_score_seq, "ref_score": ref_score_seq }
-    }
-    if warnings:
-        out_data['warnings'] = warnings
-
-    return out_data
+    out_data = { "query": query_seq, "ref": ref_seq, "query_score": query_score_seq, "ref_score": ref_score_seq }
+    return out_data, warnings, list(aln.values())
