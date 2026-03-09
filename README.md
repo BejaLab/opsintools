@@ -9,6 +9,7 @@ Each tool has an API and a CLI. Keep in mind that the interfaces might change in
 Some of the tools can be run from the browser via [Google Colab](https://colab.research.google.com/):
 
 * [opsinmaphmm](https://colab.research.google.com/github/BejaLab/opsintools/blob/main/colab/opsinmaphmm.ipynb)
+* [opsinmap3d](https://colab.research.google.com/github/BejaLab/opsintools/blob/main/colab/opsinmap3d.ipynb)
 * [opsinpdb](https://colab.research.google.com/github/BejaLab/opsintools/blob/main/colab/opsinpdb.ipynb)
 
 ## Install it
