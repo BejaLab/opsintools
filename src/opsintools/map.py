@@ -145,7 +145,7 @@ def opsinmap3d_cli():
     adv_group.add_argument('--prefer-exptl', action = 'store_true', help = f'prefer experimental structure over predictions (default: choose by similarity only)')
     adv_group.add_argument('--pad-n', default = PAD_N, type = int, help = f'N-terminal padding for query trimming (default: {PAD_N})')
     adv_group.add_argument('--pad-c', default = PAD_C, type = int, help = f'C-terminal padding for query trimming (default: {PAD_C})')
-    adv_group.add_argument('--max-seq-id', default = MAX_SEQ_ID, type = int, help = f'maximum sequence identity for predicted templates (default: {MAX_SEQ_ID})')
+    adv_group.add_argument('--max-seq-id', default = MAX_SEQ_ID, type = float, help = f'maximum sequence identity for predicted templates (default: {MAX_SEQ_ID})')
     adv_group.add_argument('--methods', default = ','.join(METHODS), help = f't-coffee methods to use (default: {",".join(METHODS)})')
 
     args = parser.parse_args()
