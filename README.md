@@ -66,7 +66,8 @@ Opsin homology based on protein structures. The input is an opsin structure in P
 * `t_coffee.aln` - structural alignment
 * `t_coffee.aln.score_ascii` - alignment scores
 * `t_coffee.aln.log` - structural alignment log
-* `opsinmap.json` - json file with the position mapping
+* `opsinmap.json` - json file with the alignment
+* `mapping.tsv` - tsv file with the position mapping
 
 The API function `opsinmap3d` returns the dictionary mapping reference positions to the query positions as its output.
 
@@ -130,7 +131,8 @@ Opsin homology based on protein profiles. The input is a fasta file with multipl
 
 * `{dataset}/hmmsearch.txt` - raw `hmmsearch` output for each reference dataset
 * `trimmed.pdb` - trimmed query structure
-* `opsinmap.json` - json file with the position mapping
+* `opsinmap.json` - json file with alignments
+* `mapping.tsv` - tsv file with the position mapping
 
 The API function `opsinmaphmm` returns the dictionary mapping reference positions to the query positions as its output.
 
