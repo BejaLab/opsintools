@@ -125,7 +125,7 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
                     q_score.append(qs)
                     r_score.append(rs)
 
-            html_out.append(f'<div class="header">Query: {domain["query"]}, Reference: {domain["ref"]}</div>')
+            html_out.append(f'<div class="header">Query: {domain["query"]}, reference: {domain["ref"]}, dataset: {profile}</div>')
 
             q_idx = 0
             r_idx = 0

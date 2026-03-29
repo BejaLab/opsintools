@@ -10,7 +10,7 @@ PAD_C: Final[int] = 30
 THREADS: Final[int] = 1
 N_REPS: Final[int] = 20
 MAX_SEQ_ID: Final[float] = 0.9
-METHODS: list[str] = [ 'sap_pair', 'mustang_pair', 't_coffee_msa', 'probcons_msa' ]
+METHODS: list[str] = [ 'mtm_align_msa' ]
 
 HMM_MAX_GAP: Final[int] = 200
 HMM_MIN_SCORE: Final[int] = 15
