@@ -192,4 +192,5 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
     with open(file = output_html_path, mode = "w") as f:
         f.write(html_string)
 
-    display(HTML(data = html_string))
+    js_reset = "<script>window.scrollTo(0, 0);</script>"
+    display(HTML(data = html_string + js_reset))
