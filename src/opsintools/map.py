@@ -104,6 +104,7 @@ def opsinmap3d(
     finishing_time = timer()
     alignment, warnings, mapping = aln_mapping(t_coffee_aln, trimmed_pdb, ref['filename'], 'query', ref)
     output = {
+        'profile': database['profile'].parent.name,
         'query': query_path.stem,
         'trimmed': f"{query_path.stem}/{trim_start}-{trim_end}",
         'ref': ref['id'],
