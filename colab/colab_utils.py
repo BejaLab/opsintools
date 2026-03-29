@@ -92,7 +92,9 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
         ".header { font-weight: bold; font-size: 16px; margin-top: 15px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }",
         ".row-label { display: inline-block; width: 60px; font-weight: bold; color: #555; }",
         ".match-char { color: #666; font-weight: bold; }",
-        "</style></head><body>"
+        ".scrollable-wrapper { max-height: 500px; overflow-y: auto; padding-right: 10px; }",
+        "</style></head><body>",
+        '<div class="scrollable-wrapper">'
     ]
 
     ref_data = {}
@@ -185,12 +187,11 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
                 q_idx = next_q_idx
                 r_idx = next_r_idx
 
-    html_out.append("</body></html>")
+    html_out.append("</div></body></html>")
 
     html_string = "\n".join(html_out)
 
     with open(file = output_html_path, mode = "w") as f:
         f.write(html_string)
 
-    js_reset = "<script>window.scrollTo(0, 0);</script>"
-    display(HTML(data = html_string + js_reset))
+    display(HTML(data = html_string))
