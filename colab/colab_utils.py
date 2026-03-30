@@ -17,9 +17,9 @@ zappo = {
     'C': '#FFFF00'
  }
 
-def get_color_rgba(aa, score_char):
+def get_color_rgba(aa, score):
     hex_color = zappo.get(aa.upper(), '#FFFFFF')
-    alpha = (int(score_char) + 1) / 10.0 if score_char.isdigit() else 0.1
+    alpha = score / 10 if score is not None else 0.1
     r = int(hex_color[1:3], 16)
     g = int(hex_color[3:5], 16)
     b = int(hex_color[5:7], 16)
@@ -81,6 +81,13 @@ def build_tm_track(sequence, start_idx, tms):
 
     return "".join(tm_html), current_idx
 
+def parse_score(score_str):
+    if score_str == "*":
+        return 10
+    if score_str.isdigit():
+        return int(score_str)
+    return None
+
 def generate_html_report(output_path, data_path, def_profile = None, num_alns = MAX_ALNS):
     json_paths = list(output_path.glob("*/opsinmap.json"))[:num_alns]
     output_html_path = output_path / "alignment.html"
@@ -124,8 +131,8 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
                 if qa != '-' or ra != '-':
                     q_seq.append(qa)
                     r_seq.append(ra)
-                    q_score.append(qs)
-                    r_score.append(rs)
+                    q_score.append(parse_score(qs))
+                    r_score.append(parse_score(rs))
 
             html_out.append(f'<div class="header">Query: {domain["query"]}, reference: {domain["ref"]}, dataset: {profile}</div>')
 
@@ -145,7 +152,7 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
                 # 2. Query Sequence
                 q_html = ['<span class="row-label">Query</span>']
                 for j, qa in enumerate(q_chunk):
-                    rgba = get_color_rgba(aa = qa, score_char = qs_chunk[j])
+                    rgba = get_color_rgba(aa = qa, score = qs_chunk[j])
                     q_html.append(f'<span style="background-color: {rgba};">{qa}</span>')
                 html_out.append("".join(q_html) + "<br>")
 
@@ -158,7 +165,7 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
                     rs = rs_chunk[j]
 
                     # Check that both scores exist and both chars are alpha
-                    if qa.isalpha() and ra.isalpha() and qs.isdigit() and rs.isdigit():
+                    if qa.isalpha() and ra.isalpha() and qs is not None and rs is not None:
                         if qa.upper() == ra.upper():
                             m_html.append(f'<span class="match-char">{qa.upper()}</span>')
                         elif zappo.get(qa.upper()) == zappo.get(ra.upper()) and zappo.get(qa.upper()) is not None:
@@ -172,7 +179,7 @@ def generate_html_report(output_path, data_path, def_profile = None, num_alns = 
                 # 4. Reference Sequence
                 r_html = ['<span class="row-label">Ref</span>']
                 for j, ra in enumerate(r_chunk):
-                    rgba = get_color_rgba(aa = ra, score_char = rs_chunk[j])
+                    rgba = get_color_rgba(aa = ra, score = rs_chunk[j])
                     r_html.append(f'<span style="background-color: {rgba};">{ra}</span>')
                 html_out.append("".join(r_html) + "<br>")
 
