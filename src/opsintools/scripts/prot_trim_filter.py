@@ -54,6 +54,7 @@ def prot_trim_filter(
         seqres = get_seqres(query_pdb_file, query_structure)
 
         ref_first, ref_last = utils.get_first_and_last(ref_structure)
+        query_first, query_last = utils.get_first_and_last(query_structure)
 
         aln_first, *_, aln_last = aln.alignment
         ref_first_aln_pos, query_first_aln_pos, *_ = aln_first
@@ -64,8 +65,8 @@ def prot_trim_filter(
 
         if missing_n <= max_missing_n and missing_c <= max_missing_c:
             # Trim the structure and save it to output pdb
-            start = query_first_aln_pos - missing_n - pad_n
-            end = query_last_aln_pos + missing_c + pad_c
+            start = max(query_first, query_first_aln_pos - missing_n - pad_n)
+            end = min(query_last, query_last_aln_pos + missing_c + pad_c)
             trim_struct(query_structure, seqres, trimmed_pdb_file, start, end)
             return start, end
 
