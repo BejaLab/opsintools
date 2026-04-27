@@ -72,11 +72,11 @@ def opsinmap3d(
 
     alignment_to_ref_start = timer()
     logger.info("Aligning the query to the reference")
-    us_align(ref['filename'], query_pdb, aln_to_ref)
+    aln = us_align(ref['filename'], query_pdb, aln_to_ref)
 
     trimming_start = timer()
     logger.info("Trimming the query")
-    trim_start, trim_end = prot_trim_filter(aln_to_ref, query_pdb, ref['filename'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
+    trim_start, trim_end = prot_trim_filter(aln, query_pdb, ref['filename'], trimmed_pdb, pad_n = pad_n, pad_c = pad_c)
 
     templates_start = timer()
     chosen_templates: list = []
@@ -108,6 +108,11 @@ def opsinmap3d(
         'query': query_path.stem,
         'trimmed': f"{query_path.stem}/{trim_start}-{trim_end}",
         'ref': ref['id'],
+        'aln_to_ref': {
+            'rmsd': aln.rmsd,
+            'tm_scores': aln.tm_scores,
+            'seq_id': aln.seq_id
+        },
         'alignment': alignment,
         'templates': chosen_templates
     }
@@ -206,7 +211,6 @@ def opsinmaphmm(
     from Bio.SeqRecord import SeqRecord
     from Bio.Seq import Seq
     import json
-    from opsintools.scripts.prot_trim_filter import prot_trim_filter
     from opsintools.scripts.us_align import us_align
     from opsintools.scripts.score_alignments import score_alignments
     from opsintools.scripts.t_coffee import t_coffee, check_t_coffee_methods

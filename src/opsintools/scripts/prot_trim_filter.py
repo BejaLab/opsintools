@@ -1,6 +1,5 @@
 from Bio import PDB
 from Bio.Seq import Seq
-from opsintools.classes.USalign import USalign
 from opsintools.classes.TrimmedChain import TrimmedChain
 from opsintools.scripts import utils
 from math import inf
@@ -38,16 +37,14 @@ def get_seqres(pdb_file, structure, model = 0, chain = 'A'):
     return seqres_lines
 
 def prot_trim_filter(
-        aln_file, query_pdb_file, ref_pdb_file, trimmed_pdb_file,
+        aln, query_pdb_file, ref_pdb_file, trimmed_pdb_file,
         pad_n = 0, pad_c = 0, max_missing_n = inf, max_missing_c = inf, max_rmsd = inf, min_aln_len = 0, max_aln_len = inf, min_len = 0, ref_lys_pos = None
     ):
     """Trim protein based on an alignment
     """
-    aln = filter_aln_seq(aln_file, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos)
-
     success = False
 
-    if aln is not None:
+    if check_aln_seq(aln, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos):
         parser = PDB.PDBParser(QUIET = True)
         ref_structure = parser.get_structure('ref', ref_pdb_file)
         query_structure = parser.get_structure('query', query_pdb_file)
@@ -73,18 +70,17 @@ def prot_trim_filter(
     with open(trimmed_pdb_file, 'w'):
         return -1, -1
 
-def filter_aln_seq(aln_file, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos):
+def check_aln_seq(aln, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos):
     """Function to check if query needs to be filtered out
     Save aligned sequence for both referance and query
     """
-    aln = USalign(aln_file)
     
     if not aln.alignment:
         raise ValueError(f"Alignment is empty in {aln_file}")
 
     # If criteria not met return empty
     if aln.rmsd > max_rmsd or len(aln.alignment) < min_aln_len or aln.seq_lens[1] < min_len:
-        return None
+        return False
 
     # Check if for the referance lysine position there is a lysine in the query 
     lys_reached = False
@@ -97,9 +93,9 @@ def filter_aln_seq(aln_file, max_rmsd, min_len, min_aln_len, max_aln_len, ref_ly
             lys_reached = True
 
     if ref_lys_pos is not None and not lys_reached:
-        return None
+        return False
 
-    return aln
+    return True
 
 def trim_struct(structure, seqres, trimmed_pdb, start, end, model = 0, chain = 'A'):
     """Function to trim the pdb file according to start and stop positions

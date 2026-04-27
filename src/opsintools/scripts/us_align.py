@@ -1,6 +1,7 @@
 import subprocess
 import shutil
 from os import path
+from opsintools.classes.USalign import USalign
 
 def us_align(ref_pdb, query_pdb, output):
     """Run US-align for each cluster representative on the query"""
@@ -11,3 +12,4 @@ def us_align(ref_pdb, query_pdb, output):
         result = subprocess.run(cmd, stdout = out_file, stderr = subprocess.PIPE)
     if path.getsize(output) < 100:
         raise ValueError(f"Alignment file {output} is too small, US-align returned: {result.stderr.decode()}")
+    return USalign(output)
