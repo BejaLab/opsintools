@@ -30,8 +30,9 @@ def check_pdb_file(pdb_name, pdb_file):
 def write_inputs(pdb_dict, fasta_file, template_file):
     with open(fasta_file, 'w') as fasta_fh, open(template_file, 'w') as templ_fh:
         for seq_id, pdb_file in pdb_dict.items():
-            record, start, stop = utils.get_pdb_record(pdb_file, seq_id)
-            record.seq = record.seq[start:stop]
+            record = utils.get_pdb_record(pdb_file, seq_id)
+            start, stop = utils.get_coords(record)
+            record = record[start:stop]
             SeqIO.write(record, fasta_fh, "fasta")
             pdb_file_name = Path(pdb_file).name
             templ_fh.write(f">{seq_id} _P_ {pdb_file_name}\n")

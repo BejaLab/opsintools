@@ -140,7 +140,7 @@ def opsinmap3d(
         df = pd.DataFrame(mapping)
         df['query'] = query_path.stem
         df['ref'] = ref['id']
-        cols = [ 'query', 'ref', 'query_pos', 'ref_pos', 'query_res', 'ref_res', 'query_score', 'ref_score', 'transmembrane_helix' ]
+        cols = [ 'query', 'ref', 'query_pos', 'ref_pos', 'query_res', 'ref_res', 'query_score', 'ref_score', 'query_bfactor', 'transmembrane_helix' ]
         df.to_csv(mapping_fh, columns = cols, sep = "\t", index = False)
     with open(json_output, 'w') as file:
         json.dump([ output ], file, indent = 2)

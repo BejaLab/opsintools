@@ -57,7 +57,7 @@ def prot_trim_filter(
         ref_first_aln_pos, query_first_aln_pos, *_ = aln_first
         ref_last_aln_pos,  query_last_aln_pos, *_  = aln_last
 
-        missing_n = ref_first - ref_first_aln_pos
+        missing_n = ref_first_aln_pos - ref_first
         missing_c = ref_last  - ref_last_aln_pos
 
         if missing_n <= max_missing_n and missing_c <= max_missing_c:
@@ -72,7 +72,7 @@ def prot_trim_filter(
 
 def check_aln_seq(aln, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos):
     """Function to check if query needs to be filtered out
-    Save aligned sequence for both referance and query
+    Save aligned sequence for both reference and query
     """
     
     if not aln.alignment:
@@ -82,7 +82,7 @@ def check_aln_seq(aln, max_rmsd, min_len, min_aln_len, max_aln_len, ref_lys_pos)
     if aln.rmsd > max_rmsd or len(aln.alignment) < min_aln_len or aln.seq_lens[1] < min_len:
         return False
 
-    # Check if for the referance lysine position there is a lysine in the query 
+    # Check if for the reference lysine position there is a lysine in the query
     lys_reached = False
     for pos_r, pos_q, res_r, res_q, distance in aln.alignment:
         if pos_r == ref_lys_pos:

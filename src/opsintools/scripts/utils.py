@@ -1,5 +1,6 @@
 from Bio import SeqIO, PDB
 from Bio.Seq import Seq
+from Bio.SeqFeature import SeqFeature, FeatureLocation
 import warnings
 import re
 
@@ -14,30 +15,49 @@ def get_pdb_record(pdb_file, seq_id = 'chain_A'):
     if len(structure) != 1 or len(structure[0]) != 1:
         raise ValueError(f"{pdb_file} has multiple models or chains")
     first_pos, last_pos = get_first_and_last(structure)
+    bfactors = get_ca_bfactors(structure)
 
-    record = SeqIO.read(pdb_file, "pdb-atom")
-    record.id = record.description = seq_id
+    atom_record = SeqIO.read(pdb_file, "pdb-atom")
     try:
-        record_seqres = SeqIO.read(pdb_file, "pdb-seqres")
+        seqres_record = SeqIO.read(pdb_file, "pdb-seqres")
     except ValueError: # No SEQRES
-        record_seqres = None
-    if record_seqres is None:
         if first_pos > 1:
-            raise ValueError(f"First residue in ATOM records > 1 ({first_pos}) but no SEQRES found in {pdb_file}")
-        return record.seq, 0, len(record.seq)
-    regex = str(record.seq).replace('X', '.')
-    search = re.search(regex, str(record_seqres.seq))
-    if not search:
-        raise ValueError(f"SEQRES does not match ATOM records in {pdb_file}")
-    start, stop = search.span()
-    if start != first_pos - 1:
-        # A rare case when SEQRES was trimmed in the original PDB file
-        missing = first_pos - 1
-        record_seqres.seq = 'X' * missing + record_seqres.seq
-        start += missing
-        stop += missing
-    record_seqres.id = record_seqres.description = seq_id
-    return record_seqres, start, stop
+            raise ValueError(f"First residue in ATOM records is >1 ({first_pos}) but no SEQRES found in {pdb_file}")
+        record = atom_record
+        start, stop = 0, len(record.seq)
+    else:
+        record = seqres_record
+        regex = str(atom_record.seq).replace('X', '.')
+        search = re.search(regex, str(record.seq))
+        if not search:
+            raise ValueError(f"SEQRES does not match ATOM records in {pdb_file}")
+        start, stop = search.span()
+        if start != first_pos - 1:
+            # A rare case when SEQRES was trimmed in the original PDB file
+            missing = first_pos - 1
+            record.seq = 'X' * missing + record.seq
+            start += missing
+            stop += missing
+
+    record.id = record.description = seq_id
+    record.letter_annotations["b_factors"] = [ bfactors.get(i+1, "") for i in range(len(record.seq)) ]
+    feature = SeqFeature(FeatureLocation(start, stop), type = "trimmed")
+    record.features.append(feature)
+    return record
+
+def get_coords(record, target_type = "trimmed"):
+    for feature in record.features:
+        if feature.type == target_type:
+            return feature.location.start, feature.location.end
+    raise ValueError(f"Record {record.id} does not have any {type} feature")
+
+def get_ca_bfactors(structure, model = 0, chain = 'A'):
+    ca_bfactors = {}
+    for res in structure[model][chain]:
+        het, pos, ins_code = res.id
+        if het == ' ' and 'CA' in res:
+            ca_bfactors[pos] = res['CA'].get_bfactor()
+    return ca_bfactors
 
 def get_first_and_last(structure, model = 0, chain = 'A'):
     """Get first and last aminoacid residues in a structure"""

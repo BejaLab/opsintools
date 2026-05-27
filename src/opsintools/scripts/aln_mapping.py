@@ -2,11 +2,11 @@ from Bio import AlignIO, SeqIO, PDB
 from opsintools.classes.Tcoffee import Tcoffee
 from opsintools.scripts import utils
 
-def get_pos_to_index(pdb_file):
+def get_pos_to_index(record):
     """Match residue positions (id as defined in ATOM) and 0-based indexes
     in the (potentially trimmed) sequence
     """
-    record, start, stop = utils.get_pdb_record(pdb_file)
+    start, stop = utils.get_coords(record)
     pos_to_index = {}
     for index_in_trimmed, index_in_original in enumerate(range(start, stop)):
         pos_to_index[index_in_original + 1] = index_in_trimmed
@@ -23,8 +23,10 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
     if t_coffee.aln_score < 0:
         raise ValueError("Something went wrong: check the output of t_coffee")
 
-    query_pos_to_index, query_left, query_mid, query_right = get_pos_to_index(query_pdb_file)
-    ref_pos_to_index,   ref_left,   ref_mid,   ref_right   = get_pos_to_index(ref_pdb_file)
+    query_record = utils.get_pdb_record(query_pdb_file)
+    ref_record = utils.get_pdb_record(ref_pdb_file)
+    query_pos_to_index, query_left, query_mid, query_right = get_pos_to_index(query_record)
+    ref_pos_to_index,   ref_left,   ref_mid,   ref_right   = get_pos_to_index(ref_record)
 
     query_index_to_pos = { value: key for key, value in query_pos_to_index.items() }
     ref_index_to_pos   = { value: key for key, value in ref_pos_to_index.items() }
@@ -60,13 +62,15 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
             ref_ix += 1
         if query_not_gap and ref_not_gap:
             tm = ref_tms[ref_ix] if ref_ix in ref_tms else '-'
+            query_pos = query_index_to_pos[query_ix]
             aln[ref_ix] = {
                 'ref_pos': ref_index_to_pos[ref_ix],
-                'query_pos': query_index_to_pos[query_ix],
+                'query_pos': query_pos,
                 'ref_res': ref_res,
                 'query_res': query_res,
                 'ref_score': int(ref_score),
                 'query_score': int(query_score),
+                'query_bfactor': query_record.letter_annotations["b_factors"][query_pos - 1],
                 'transmembrane_helix': tm
             }
         if query_not_gap or ref_not_gap:
@@ -81,7 +85,7 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
     if lys_index in aln:
         ref_res, query_res = aln[lys_index]['ref_res'], aln[lys_index]['query_res']
         if ref_res != 'K':
-            raise ValueError(f"Reference lysine poisition is {ref_res}")
+            raise ValueError(f"Reference lysine poisition is {ref_res} at {lys_index}")
         if query_res != 'K':
             warnings.append(f"Lysine position is occupied by {query_res}")
     else:
