@@ -32,12 +32,15 @@ def get_pdb_record(pdb_file, seq_id = 'chain_A'):
         if not search:
             raise ValueError(f"SEQRES does not match ATOM records in {pdb_file}")
         start, stop = search.span()
-        if start != first_pos - 1:
+        if start < first_pos - 1:
             # A rare case when SEQRES was trimmed in the original PDB file
             missing = first_pos - 1
             record.seq = 'X' * missing + record.seq
             start += missing
             stop += missing
+        elif start > first_pos - 1:
+            # A case when SeqIO.read(pdb_file, "pdb-atom") trimmed leading UNK residues
+            start += first_pos - start - 1
 
     record.id = record.description = seq_id
     record.letter_annotations["b_factors"] = [ bfactors.get(i+1, "") for i in range(len(record.seq)) ]

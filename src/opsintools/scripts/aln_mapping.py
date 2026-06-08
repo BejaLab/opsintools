@@ -28,6 +28,10 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
     query_pos_to_index, query_left, query_mid, query_right = get_pos_to_index(query_record)
     ref_pos_to_index,   ref_left,   ref_mid,   ref_right   = get_pos_to_index(ref_record)
 
+    print(query_left)
+    print(query_mid)
+    print(query_right)
+
     query_index_to_pos = { value: key for key, value in query_pos_to_index.items() }
     ref_index_to_pos   = { value: key for key, value in ref_pos_to_index.items() }
 
@@ -63,6 +67,8 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
         if query_not_gap and ref_not_gap:
             tm = ref_tms[ref_ix] if ref_ix in ref_tms else '-'
             query_pos = query_index_to_pos[query_ix]
+            if query_record[query_pos - 1] != query_res:
+                raise ValueError(f"Expected {query_record[query_pos-1]} at position {query_pos}, got {query_res} in the t_coffee alignment instead")
             aln[ref_ix] = {
                 'ref_pos': ref_index_to_pos[ref_ix],
                 'query_pos': query_pos,
