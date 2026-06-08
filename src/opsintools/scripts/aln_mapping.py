@@ -28,10 +28,6 @@ def aln_mapping(aln_file, query_pdb_file, ref_pdb_file, query, ref_data):
     query_pos_to_index, query_left, query_mid, query_right = get_pos_to_index(query_record)
     ref_pos_to_index,   ref_left,   ref_mid,   ref_right   = get_pos_to_index(ref_record)
 
-    print(query_left)
-    print(query_mid)
-    print(query_right)
-
     query_index_to_pos = { value: key for key, value in query_pos_to_index.items() }
     ref_index_to_pos   = { value: key for key, value in ref_pos_to_index.items() }
 
